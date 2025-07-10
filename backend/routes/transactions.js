@@ -1,0 +1,667 @@
+const express = require('express');
+const { body, validationResult, query } = require('express-validator');
+const Transaction = require('../models/Transaction');
+const { auth } = require('../middleware/auth');
+const upload = require('../middleware/upload');
+const path = require('path');
+const fs = require('fs');
+
+const router = express.Router();
+
+// Aplicar middleware de autenticación a todas las rutas
+router.use(auth);
+
+// Middleware global de manejo de errores de multer
+router.use((err, req, res, next) => {
+  if (err && err.name === 'MulterError') {
+    return res.status(400).json({ message: err.message })
+  }
+  if (err) {
+    return res.status(400).json({ message: err.message })
+  }
+  next()
+})
+
+// GET /api/transactions - Obtener transacciones con filtros
+router.get('/', [
+  query('type').optional().isIn(['income', 'expense']),
+  query('category').optional().isString(),
+  query('startDate').optional().isISO8601(),
+  query('endDate').optional().isISO8601(),
+  query('minAmount').optional().isFloat({ min: 0 }),
+  query('maxAmount').optional().isFloat({ min: 0 }),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 }),
+  query('search').optional().isString()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Parámetros de consulta inválidos',
+        errors: errors.array()
+      });
+    }
+
+    const {
+      type,
+      category,
+      startDate,
+      endDate,
+      minAmount,
+      maxAmount,
+      page = 1,
+      limit = 20,
+      search
+    } = req.query;
+
+    // Construir filtros
+    const filters = { user: req.user._id };
+
+    if (type) filters.type = type;
+    if (category) filters.category = category;
+    
+    if (startDate || endDate) {
+      filters.date = {};
+      if (startDate) filters.date.$gte = new Date(startDate);
+      if (endDate) filters.date.$lte = new Date(endDate);
+    }
+
+    if (minAmount || maxAmount) {
+      filters.amount = {};
+      if (minAmount) filters.amount.$gte = parseFloat(minAmount);
+      if (maxAmount) filters.amount.$lte = parseFloat(maxAmount);
+    }
+
+    if (search) {
+      filters.description = { $regex: search, $options: 'i' };
+    }
+
+    // Calcular paginación
+    const skip = (page - 1) * limit;
+
+    // Ejecutar consulta
+    const transactions = await Transaction.find(filters)
+      .sort({ date: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('user', 'name email');
+
+    // Agregar campo 'url' a cada adjunto de cada transacción
+    const transactionsWithAttachmentUrls = transactions.map(tx => {
+      const txObj = tx.toObject();
+      if (Array.isArray(txObj.attachments)) {
+        txObj.attachments = txObj.attachments.map(att => ({
+          ...att,
+          url: `/api/transactions/${txObj._id}/attachments/${att.filename}`
+        }));
+      }
+      return txObj;
+    });
+
+    // Contar total de documentos
+    const total = await Transaction.countDocuments(filters);
+
+    res.json({
+      transactions: transactionsWithAttachmentUrls,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo transacciones:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// GET /api/transactions/categories - Obtener categorías disponibles
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = Transaction.getCategories();
+    res.json(categories);
+  } catch (error) {
+    console.error('Error obteniendo categorías:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// POST /api/transactions - Crear nueva transacción
+router.post('/', [
+  body('type')
+    .isIn(['income', 'expense'])
+    .withMessage('El tipo debe ser income o expense'),
+  body('amount')
+    .isFloat({ min: 0.01 })
+    .withMessage('El monto debe ser un número mayor a 0'),
+  body('category')
+    .isString()
+    .notEmpty()
+    .withMessage('La categoría es requerida'),
+  body('description')
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('La descripción debe tener entre 1 y 200 caracteres'),
+  body('date')
+    .optional()
+    .isISO8601()
+    .withMessage('La fecha debe ser válida'),
+  body('tags')
+    .optional()
+    .isArray()
+    .withMessage('Los tags deben ser un array'),
+  body('isRecurring')
+    .optional()
+    .isBoolean()
+    .withMessage('isRecurring debe ser un booleano'),
+  body('recurringPeriod')
+    .optional()
+    .isIn(['weekly', 'monthly', 'yearly'])
+    .withMessage('El período recurrente debe ser weekly, monthly o yearly')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Datos de entrada inválidos',
+        errors: errors.array()
+      });
+    }
+
+    const {
+      type,
+      amount,
+      category,
+      description,
+      date = new Date(),
+      tags = [],
+      isRecurring = false,
+      recurringPeriod
+    } = req.body;
+
+    // Validar que la categoría sea válida para el tipo
+    const categories = Transaction.getCategories();
+    const validCategories = categories[type] || [];
+    const isValidCategory = validCategories.some(cat => cat.value === category);
+    
+    if (!isValidCategory) {
+      return res.status(400).json({
+        message: 'Categoría inválida para el tipo de transacción'
+      });
+    }
+
+    // Crear transacción
+    const transaction = new Transaction({
+      user: req.user._id,
+      type,
+      amount,
+      category,
+      description,
+      date,
+      tags,
+      isRecurring,
+      recurringPeriod: isRecurring ? recurringPeriod : null
+    });
+
+    await transaction.save();
+
+    // Poblar datos del usuario
+    await transaction.populate('user', 'name email');
+
+    res.status(201).json({
+      message: 'Transacción creada exitosamente',
+      transaction
+    });
+
+  } catch (error) {
+    console.error('Error creando transacción:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// GET /api/transactions/:id - Obtener transacción específica
+router.get('/:id', async (req, res) => {
+  try {
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    }).populate('user', 'name email');
+
+    if (!transaction) {
+      return res.status(404).json({
+        message: 'Transacción no encontrada'
+      });
+    }
+
+    res.json({ transaction });
+
+  } catch (error) {
+    console.error('Error obteniendo transacción:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// PUT /api/transactions/:id - Actualizar transacción
+router.put('/:id', [
+  body('type')
+    .optional()
+    .isIn(['income', 'expense'])
+    .withMessage('El tipo debe ser income o expense'),
+  body('amount')
+    .optional()
+    .isFloat({ min: 0.01 })
+    .withMessage('El monto debe ser un número mayor a 0'),
+  body('category')
+    .optional()
+    .isString()
+    .notEmpty()
+    .withMessage('La categoría no puede estar vacía'),
+  body('description')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('La descripción debe tener entre 1 y 200 caracteres'),
+  body('date')
+    .optional()
+    .isISO8601()
+    .withMessage('La fecha debe ser válida')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Datos de entrada inválidos',
+        errors: errors.array()
+      });
+    }
+
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        message: 'Transacción no encontrada'
+      });
+    }
+
+    // Actualizar campos
+    Object.keys(req.body).forEach(key => {
+      if (req.body[key] !== undefined) {
+        transaction[key] = req.body[key];
+      }
+    });
+
+    await transaction.save();
+    await transaction.populate('user', 'name email');
+
+    res.json({
+      message: 'Transacción actualizada exitosamente',
+      transaction
+    });
+
+  } catch (error) {
+    console.error('Error actualizando transacción:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// DELETE /api/transactions/:id - Eliminar transacción
+router.delete('/:id', async (req, res) => {
+  try {
+    const transaction = await Transaction.findOneAndDelete({
+      _id: req.params.id,
+      user: req.user._id
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        message: 'Transacción no encontrada'
+      });
+    }
+
+    res.json({
+      message: 'Transacción eliminada exitosamente'
+    });
+
+  } catch (error) {
+    console.error('Error eliminando transacción:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// PUT /api/transactions/bulk-update - Actualización masiva de transacciones
+router.put('/bulk-update', [
+  body('transactionIds')
+    .isArray({ min: 1 })
+    .withMessage('Debe seleccionar al menos una transacción'),
+  body('action')
+    .isIn(['update', 'add_tags'])
+    .withMessage('La acción debe ser update o add_tags'),
+  body('type')
+    .optional()
+    .isIn(['income', 'expense'])
+    .withMessage('El tipo debe ser income o expense'),
+  body('category')
+    .optional()
+    .isString()
+    .notEmpty()
+    .withMessage('La categoría no puede estar vacía'),
+  body('tags')
+    .optional()
+    .isString()
+    .notEmpty()
+    .withMessage('Los tags no pueden estar vacíos')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Datos de entrada inválidos',
+        errors: errors.array()
+      });
+    }
+
+    const { transactionIds, action, type, category, tags } = req.body;
+
+    // Verificar que todas las transacciones pertenezcan al usuario
+    const transactions = await Transaction.find({
+      _id: { $in: transactionIds },
+      user: req.user._id
+    });
+
+    if (transactions.length !== transactionIds.length) {
+      return res.status(400).json({
+        message: 'Algunas transacciones no existen o no tienes permisos para editarlas'
+      });
+    }
+
+    let updateData = {};
+
+    if (action === 'update') {
+      // Validar que la categoría sea válida para el tipo
+      if (type && category) {
+        const categories = Transaction.getCategories();
+        const validCategories = categories[type] || [];
+        const isValidCategory = validCategories.some(cat => cat.value === category);
+        
+        if (!isValidCategory) {
+          return res.status(400).json({
+            message: 'Categoría inválida para el tipo de transacción'
+          });
+        }
+      }
+
+      if (type) updateData.type = type;
+      if (category) updateData.category = category;
+    }
+
+    if (action === 'add_tags' && tags) {
+      // Parsear tags y agregarlos a las transacciones existentes
+      const newTags = tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+      
+      // Actualizar cada transacción agregando los nuevos tags
+      for (const transaction of transactions) {
+        const existingTags = transaction.tags || [];
+        const uniqueTags = [...new Set([...existingTags, ...newTags])];
+        transaction.tags = uniqueTags;
+        await transaction.save();
+      }
+
+      return res.json({
+        message: `Tags agregados exitosamente a ${transactions.length} transacción(es)`
+      });
+    }
+
+    // Actualizar transacciones con los nuevos datos
+    const result = await Transaction.updateMany(
+      { _id: { $in: transactionIds }, user: req.user._id },
+      updateData
+    );
+
+    res.json({
+      message: `${result.modifiedCount} transacción(es) actualizada(s) exitosamente`
+    });
+
+  } catch (error) {
+    console.error('Error en actualización masiva:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// POST /api/transactions/:id/attachments - Subir archivos adjuntos
+router.post('/:id/attachments', auth, upload.array('files', 5), async (req, res) => {
+  try {
+    console.log('Intentando adjuntar archivos a transacción:', req.params.id, 'para usuario:', req.user._id)
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    });
+    console.log('Resultado de búsqueda de transacción:', transaction)
+    if (!transaction) {
+      return res.status(404).json({
+        message: 'Transacción no encontrada para este usuario'
+      });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        message: 'No se han subido archivos'
+      });
+    }
+
+    // Procesar archivos subidos
+    const attachments = req.files.map(file => ({
+      filename: file.filename,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      path: file.path
+    }));
+
+    // Agregar archivos a la transacción
+    transaction.attachments.push(...attachments);
+    await transaction.save();
+
+    res.json({
+      message: `${attachments.length} archivo(s) subido(s) exitosamente`,
+      attachments: attachments
+    });
+
+  } catch (error) {
+    console.error('Error subiendo archivos:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// GET /api/transactions/:id/attachments/:filename - Descargar archivo
+router.get('/:id/attachments/:filename', auth, async (req, res) => {
+  try {
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        message: 'Transacción no encontrada'
+      });
+    }
+
+    const attachment = transaction.attachments.find(
+      att => att.filename === req.params.filename
+    );
+
+    if (!attachment) {
+      return res.status(404).json({
+        message: 'Archivo no encontrado'
+      });
+    }
+
+    const filePath = path.join(__dirname, '../uploads', attachment.filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        message: 'Archivo no encontrado en el servidor'
+      });
+    }
+
+    res.download(filePath, attachment.originalName);
+
+  } catch (error) {
+    console.error('Error descargando archivo:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// DELETE /api/transactions/:id/attachments/:filename - Eliminar archivo adjunto
+router.delete('/:id/attachments/:filename', auth, async (req, res) => {
+  try {
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        message: 'Transacción no encontrada'
+      });
+    }
+
+    const attachmentIndex = transaction.attachments.findIndex(
+      att => att.filename === req.params.filename
+    );
+
+    if (attachmentIndex === -1) {
+      return res.status(404).json({
+        message: 'Archivo no encontrado'
+      });
+    }
+
+    const attachment = transaction.attachments[attachmentIndex];
+    const filePath = path.join(__dirname, '../uploads', attachment.filename);
+
+    // Eliminar archivo del sistema de archivos
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    // Eliminar referencia de la base de datos
+    transaction.attachments.splice(attachmentIndex, 1);
+    await transaction.save();
+
+    res.json({
+      message: 'Archivo eliminado exitosamente'
+    });
+
+  } catch (error) {
+    console.error('Error eliminando archivo:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// GET /api/transactions/export - Exportar transacciones a CSV
+router.get('/export', auth, [
+  query('startDate').optional().isISO8601(),
+  query('endDate').optional().isISO8601(),
+  query('type').optional().isIn(['income', 'expense']),
+  query('category').optional().isString()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Parámetros de consulta inválidos',
+        errors: errors.array()
+      });
+    }
+
+    const { startDate, endDate, type, category } = req.query;
+
+    // Construir filtros
+    const filters = { user: req.user._id };
+
+    if (type) filters.type = type;
+    if (category) filters.category = category;
+    
+    if (startDate || endDate) {
+      filters.date = {};
+      if (startDate) filters.date.$gte = new Date(startDate);
+      if (endDate) filters.date.$lte = new Date(endDate);
+    }
+
+    // Obtener transacciones
+    const transactions = await Transaction.find(filters)
+      .sort({ date: -1, createdAt: -1 })
+      .populate('user', 'name email');
+
+    // Generar CSV
+    const csvHeaders = [
+      'Fecha',
+      'Tipo',
+      'Categoría',
+      'Descripción',
+      'Monto',
+      'Tags',
+      'Recurrente',
+      'Período Recurrente',
+      'Archivos Adjuntos'
+    ];
+
+    const csvRows = transactions.map(transaction => [
+      new Date(transaction.date).toLocaleDateString('es-ES'),
+      transaction.type === 'income' ? 'Ingreso' : 'Gasto',
+      transaction.category,
+      transaction.description,
+      transaction.amount.toFixed(2),
+      transaction.tags?.join(', ') || '',
+      transaction.isRecurring ? 'Sí' : 'No',
+      transaction.recurringPeriod || '',
+      transaction.attachments?.length || 0
+    ]);
+
+    const csvContent = [csvHeaders, ...csvRows]
+      .map(row => row.map(field => `"${field}"`).join(','))
+      .join('\n');
+
+    // Configurar headers para descarga
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="transacciones_${new Date().toISOString().split('T')[0]}.csv"`);
+
+    res.send(csvContent);
+
+  } catch (error) {
+    console.error('Error exportando transacciones:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+module.exports = router; 
