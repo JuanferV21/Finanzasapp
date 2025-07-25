@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { X, Info } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 const DemoBanner = () => {
   const [isVisible, setIsVisible] = useState(true);
+  const { user } = useAuth();
 
-  if (!isVisible) return null;
+  // Ocultar banner si el usuario está logueado o si fue cerrado manualmente
+  if (!isVisible || user) return null;
 
   return (
     <div className="bg-blue-600 text-white px-4 py-3 relative">
