@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { api } from '../services/api'
+import { demoAuthService } from '../services/demoAuth'
 
 const AuthContext = createContext()
 
@@ -15,71 +15,39 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Verificar token al cargar la aplicación
+  // Verificar token al cargar la aplicación (modo demo)
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-      checkAuth()
-    } else {
-      setLoading(false)
+    if (demoAuthService.isAuthenticated()) {
+      const currentUser = demoAuthService.getCurrentUser()
+      setUser(currentUser)
     }
+    setLoading(false)
   }, [])
-
-  const checkAuth = async () => {
-    try {
-      const response = await api.get('/auth/me')
-      setUser(response.data.user)
-    } catch (error) {
-      console.error('Error verificando autenticación:', error)
-      localStorage.removeItem('token')
-      delete api.defaults.headers.common['Authorization']
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const login = async (email, password) => {
     try {
-      const response = await api.post('/auth/login', { email, password })
-      const { token, user } = response.data
-      
-      localStorage.setItem('token', token)
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      const { user } = await demoAuthService.login(email, password)
       setUser(user)
-      
       return { success: true }
     } catch (error) {
       console.error('Error en login:', error)
       return {
         success: false,
-        message: error.response?.data?.message || 'Error al iniciar sesión'
+        message: error.message || 'Error al iniciar sesión'
       }
     }
   }
 
   const register = async (name, email, password) => {
-    try {
-      const response = await api.post('/auth/register', { name, email, password })
-      const { token, user } = response.data
-      
-      localStorage.setItem('token', token)
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-      setUser(user)
-      
-      return { success: true }
-    } catch (error) {
-      console.error('Error en registro:', error)
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Error al registrarse'
-      }
+    // En modo demo, redirigir al login
+    return {
+      success: false,
+      message: 'Registro deshabilitado en modo demo. Usa: demo@finanzasdash.com / demo123'
     }
   }
 
   const logout = () => {
-    localStorage.removeItem('token')
-    delete api.defaults.headers.common['Authorization']
+    demoAuthService.logout()
     setUser(null)
   }
 

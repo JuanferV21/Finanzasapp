@@ -1,6 +1,7 @@
 import axios from 'axios'
+import { demoAPI } from './demoAuth'
 
-// Crear instancia de axios
+// Crear instancia de axios (solo para compatibilidad)
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
   timeout: 10000,
@@ -44,57 +45,53 @@ export const authService = {
   logout: () => api.post('/auth/logout'),
 }
 
-// Servicios de transacciones
+// Servicios de transacciones (modo demo)
 export const transactionService = {
-  getAll: (params) => api.get('/transactions', { params }),
-  getById: (id) => api.get(`/transactions/${id}`),
-  create: (data) => api.post('/transactions', data),
-  update: (id, data) => api.put(`/transactions/${id}`, data),
-  delete: (id) => api.delete(`/transactions/${id}`),
-  getCategories: () => api.get('/transactions/categories'),
-  // Descargar archivo adjunto autenticado
-  downloadAttachment: (transactionId, filename) =>
-    api.get(`/transactions/${transactionId}/attachments/${filename}`, {
-      responseType: 'blob',
-    }),
+  getAll: (params) => demoAPI.getTransactions(),
+  getById: (id) => Promise.resolve({}),
+  create: (data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  update: (id, data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  delete: (id) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  getCategories: () => Promise.resolve({ data: ['Alimentación', 'Transporte', 'Entretenimiento', 'Servicios', 'Salario', 'Freelance', 'Inversiones'] }),
+  downloadAttachment: (transactionId, filename) => Promise.resolve({}),
 }
 
-// Servicios de estadísticas
+// Servicios de estadísticas (modo demo)
 export const statsService = {
-  getSummary: (params) => api.get('/stats/summary', { params }),
-  getCategories: (params) => api.get('/stats/categories', { params }),
-  getMonthly: (params) => api.get('/stats/monthly', { params }),
-  getTrends: () => api.get('/stats/trends'),
+  getSummary: (params) => demoAPI.getStats().then(data => ({ data })),
+  getCategories: (params) => Promise.resolve({ data: [] }),
+  getMonthly: (params) => Promise.resolve({ data: [] }),
+  getTrends: () => Promise.resolve({ data: [] }),
 }
 
-// Servicios de presupuestos
+// Servicios de presupuestos (modo demo)
 export const budgetService = {
-  getAll: (params) => api.get('/budgets', { params }),
-  create: (data) => api.post('/budgets', data),
-  delete: (id) => api.delete(`/budgets/${id}`),
+  getAll: (params) => demoAPI.getBudgets().then(data => ({ data })),
+  create: (data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  delete: (id) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
 };
 
-// Servicio de metas de ahorro
+// Servicio de metas de ahorro (modo demo)
 export const goalService = {
-  getAll: () => api.get('/goals'),
-  create: (data) => api.post('/goals', data),
-  update: (id, data) => api.put(`/goals/${id}`, data),
-  delete: (id) => api.delete(`/goals/${id}`),
-  notify: (data) => api.post('/goals/notify', data),
+  getAll: () => demoAPI.getGoals().then(data => ({ data })),
+  create: (data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  update: (id, data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  delete: (id) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  notify: (data) => Promise.resolve({ data: { success: true } }),
 };
 
-// Servicio de aportes a metas
+// Servicio de aportes a metas (modo demo)
 export const contributionService = {
-  getByGoal: (goalId) => api.get(`/contributions/${goalId}`),
-  create: (data) => api.post('/contributions', data),
-  update: (id, data) => api.put(`/contributions/${id}`, data),
-  delete: (id) => api.delete(`/contributions/${id}`),
+  getByGoal: (goalId) => Promise.resolve({ data: [] }),
+  create: (data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  update: (id, data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
+  delete: (id) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
 };
 
 export const pushService = {
-  getVapidKey: () => api.get('/goals/vapid-key'), // endpoint a crear si se quiere exponer la clave pública
-  subscribe: (subscription) => api.post('/goals/subscribe', { subscription }),
-  send: (userId, title, body) => api.post('/goals/push', { userId, title, body }),
+  getVapidKey: () => Promise.resolve({ data: '' }),
+  subscribe: (subscription) => Promise.resolve({ data: { success: true } }),
+  send: (userId, title, body) => Promise.resolve({ data: { success: true } }),
 };
 
 export default api 

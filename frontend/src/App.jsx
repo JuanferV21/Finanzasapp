@@ -8,6 +8,7 @@ import Reports from './pages/Reports'
 import Budgets from './pages/Budgets';
 import Goals from './pages/Goals';
 import Layout from './components/Layout'
+import DemoBanner from './components/DemoBanner'
 
 // Componente para proteger rutas
 const ProtectedRoute = ({ children }) => {
@@ -77,6 +78,7 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
+      <DemoBanner />
       <AppRoutes />
     </AuthProvider>
   )
