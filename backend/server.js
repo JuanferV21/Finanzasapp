@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const { apiLimiter } = require('./middleware/rateLimiter');
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
@@ -11,6 +12,9 @@ const statsRoutes = require('./routes/stats');
 const budgetRoutes = require('./routes/budgets');
 const goalRoutes = require('./routes/goals');
 const contributionRoutes = require('./routes/contributions');
+const migrateRoutes = require('./routes/migrate');
+const categorizationRoutes = require('./routes/categorization');
+const reportRoutes = require('./routes/reports');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -22,6 +26,10 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true
 }));
+
+// Rate limiting global para todas las APIs
+app.use('/api', apiLimiter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -45,6 +53,9 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/contributions', contributionRoutes);
+app.use('/api/migrate', migrateRoutes);
+app.use('/api/categorization', categorizationRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

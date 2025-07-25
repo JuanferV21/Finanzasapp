@@ -29,11 +29,11 @@ const Layout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
       {/* Sidebar móvil */}
-      <div className={`fixed inset-0 z-50 lg:hidden ${sidebarOpen ? 'block' : 'hidden'}`}>
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
-        <div className="fixed inset-y-0 left-0 flex w-4/5 max-w-xs min-w-0 flex-col bg-white transition-all duration-300 sm:w-72 md:w-80">
+      <div className={`fixed inset-0 z-sidebar-mobile lg:hidden ${sidebarOpen ? 'block' : 'hidden'}`}>
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-y-0 left-0 flex w-4/5 max-w-xs min-w-0 flex-col glass-sidebar transition-all duration-300 sm:w-72 md:w-80">
           <div className="flex h-16 items-center justify-between px-4">
             <h1 className="text-lg sm:text-xl font-bold text-gray-900">Finanzas</h1>
             <button
@@ -75,7 +75,7 @@ const Layout = () => {
 
       {/* Sidebar desktop */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-60 xl:w-64 lg:min-w-0 lg:max-w-full lg:flex-col">
-        <div className="flex flex-col flex-grow bg-white border-r border-gray-200 min-w-0 max-w-full">
+        <div className="flex flex-col flex-grow glass-sidebar min-w-0 max-w-full">
           <div className="flex h-16 items-center px-4">
             <h1 className="text-lg xl:text-xl font-bold text-gray-900">Finanzas</h1>
           </div>
@@ -111,7 +111,7 @@ const Layout = () => {
       {/* Contenido principal */}
       <div className="lg:pl-60 xl:pl-64 min-w-0 w-full">
         {/* Header móvil */}
-        <div className="sticky top-0 z-40 flex h-14 sm:h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-2 sm:px-4 shadow-sm lg:hidden">
+        <div className="sticky top-0 z-navbar flex h-14 sm:h-16 shrink-0 items-center gap-x-4 glass-navbar px-2 sm:px-4 shadow-sm lg:hidden">
           <button
             type="button"
             className="-m-2.5 p-2.5 text-gray-700 lg:hidden"

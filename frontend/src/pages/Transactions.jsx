@@ -28,6 +28,7 @@ import BulkEditModal from '../components/BulkEditModal'
 import TransactionFilters from '../components/TransactionFilters'
 import TransactionTable from '../components/TransactionTable'
 import Pagination from '../components/Pagination'
+import PageHeader from '../components/PageHeader';
 
 const Transactions = () => {
   const [transactions, setTransactions] = useState([])
@@ -309,26 +310,28 @@ const Transactions = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Transacciones</h1>
-          <p className="text-gray-600 text-sm sm:text-base">Gestiona tus ingresos y gastos de manera eficiente</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <button className="btn-secondary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={exportToCSV}>
-            <Download className="h-4 w-4" />
-            Exportar CSV
-          </button>
-          <button className="btn-primary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={() => setShowTransactionModal(true)}>
-            <Plus className="h-4 w-4" />
-            Nueva transacción
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Transacciones"
+        subtitle="Gestiona tus ingresos y gastos de manera eficiente"
+        actions={
+          <>
+            <button className="btn-secondary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={exportToCSV}>
+              <Download className="h-4 w-4" />
+              Exportar CSV
+            </button>
+            <button className="btn-primary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={() => setShowTransactionModal(true)}>
+              <Plus className="h-4 w-4" />
+              Nueva transacción
+            </button>
+          </>
+        }
+        gradientFrom="from-green-50"
+        gradientTo="to-blue-50"
+        borderColor="border-green-200"
+      />
 
       {/* Filtros y búsqueda */}
-      <div className="card w-full max-w-full min-w-0">
+      <div className="glass-card w-full max-w-full min-w-0">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Filtros y búsqueda</h2>
           <button className="text-primary-600 text-sm font-medium hover:underline" onClick={clearFilters}>Limpiar filtros</button>
@@ -343,7 +346,7 @@ const Transactions = () => {
       </div>
 
       {/* Lista de transacciones */}
-      <div className="card w-full max-w-full min-w-0 overflow-x-auto">
+      <div className="glass-card w-full max-w-full min-w-0 overflow-x-auto">
         <div className="text-sm text-gray-600 mb-2">Mostrando {transactions.length} de {pagination.total} transacciones</div>
         <TransactionTable
           transactions={transactions}
@@ -368,9 +371,8 @@ const Transactions = () => {
       {/* Paginación */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <Pagination
-          page={pagination.page}
-          pages={pagination.pages}
-          onPageChange={p => setPagination(prev => ({ ...prev, page: p }))}
+          pagination={pagination}
+          setPagination={setPagination}
         />
       </div>
 
@@ -397,7 +399,7 @@ const Transactions = () => {
 
       {/* Modal de previsualización de imagen mejorado */}
       {previewImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm" onClick={() => { URL.revokeObjectURL(previewImage); setPreviewImage(null); }}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm" onClick={() => { URL.revokeObjectURL(previewImage); setPreviewImage(null); }}>
           <div className="relative max-h-[90vh] max-w-[95vw]">
             <img
               src={previewImage}

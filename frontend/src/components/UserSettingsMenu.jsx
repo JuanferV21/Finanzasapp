@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { 
   User, 
@@ -17,14 +18,21 @@ import {
   Database,
   X,
   Check,
-  AlertCircle
+  AlertCircle,
+  HelpCircle,
+  Mail,
+  BarChart3
 } from 'lucide-react'
 
 const UserSettingsMenu = () => {
   const { user, logout, updateUser } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [activeTab, setActiveTab] = useState('profile')
   const menuRef = useRef(null)
+  const settingsRef = useRef(null)
+  const helpRef = useRef(null)
   
   // Estados para formularios
   const [profileForm, setProfileForm] = useState({
@@ -39,8 +47,7 @@ const UserSettingsMenu = () => {
   const [preferences, setPreferences] = useState({
     emailNotifications: user?.preferences?.emailNotifications ?? true,
     pushNotifications: user?.preferences?.pushNotifications ?? false,
-    goalReminders: user?.preferences?.goalReminders ?? true,
-    theme: user?.preferences?.theme ?? 'light'
+    goalReminders: user?.preferences?.goalReminders ?? true
   })
   
   // Estados para feedback
@@ -48,17 +55,41 @@ const UserSettingsMenu = () => {
   const [message, setMessage] = useState({ type: '', text: '' })
   const [errors, setErrors] = useState({})
 
-  // Cerrar menú al hacer clic fuera
+  // Cerrar menús al hacer clic fuera o presionar ESC
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setIsOpen(false)
       }
+      if (settingsRef.current && !settingsRef.current.contains(event.target)) {
+        setShowSettings(false)
+      }
+      if (helpRef.current && !helpRef.current.contains(event.target)) {
+        setShowHelp(false)
+      }
     }
 
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        if (showHelp) {
+          setShowHelp(false)
+        } else if (showSettings) {
+          setShowSettings(false)
+        } else if (isOpen) {
+          setIsOpen(false)
+        }
+      }
+    }
+
+    if (isOpen || showSettings || showHelp) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleEscape)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+        document.removeEventListener('keydown', handleEscape)
+      }
+    }
+  }, [isOpen, showSettings, showHelp])
 
   // Actualizar formularios cuando cambie el usuario
   useEffect(() => {
@@ -70,8 +101,7 @@ const UserSettingsMenu = () => {
       setPreferences({
         emailNotifications: user.preferences?.emailNotifications ?? true,
         pushNotifications: user.preferences?.pushNotifications ?? false,
-        goalReminders: user.preferences?.goalReminders ?? true,
-        theme: user.preferences?.theme ?? 'light'
+        goalReminders: user.preferences?.goalReminders ?? true
       })
     }
   }, [user])
@@ -79,6 +109,26 @@ const UserSettingsMenu = () => {
   const handleLogout = () => {
     logout()
     setIsOpen(false)
+    setShowSettings(false)
+    setShowHelp(false)
+  }
+
+  const openSettings = () => {
+    setIsOpen(false)
+    setShowSettings(true)
+    setShowHelp(false)
+  }
+
+  const openHelp = () => {
+    setIsOpen(false)
+    setShowSettings(false)
+    setShowHelp(true)
+  }
+
+  const closeAllMenus = () => {
+    setIsOpen(false)
+    setShowSettings(false)
+    setShowHelp(false)
   }
 
   // Función para mostrar mensajes
@@ -215,11 +265,6 @@ const UserSettingsMenu = () => {
         updateUser({ ...user, preferences: data.preferences })
       }
       
-      // Aplicar tema inmediatamente
-      if (preferences.theme) {
-        document.documentElement.classList.toggle('dark', preferences.theme === 'dark')
-        localStorage.setItem('theme', preferences.theme)
-      }
     } catch (error) {
       showMessage('error', 'Error de conexión')
     } finally {
@@ -300,12 +345,6 @@ const UserSettingsMenu = () => {
       description: 'Configurar alertas y recordatorios'
     },
     {
-      id: 'appearance',
-      label: 'Apariencia',
-      icon: Palette,
-      description: 'Personalizar tema y colores'
-    },
-    {
       id: 'data',
       label: 'Datos',
       icon: Database,
@@ -320,118 +359,180 @@ const UserSettingsMenu = () => {
   ]
 
   return (
-    <div className="relative" ref={menuRef}>
-      {/* Botón del perfil */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 group"
-      >
-        <div className="flex-shrink-0">
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow duration-200">
-            <User className="h-4 w-4 text-white" />
+    <>
+      <div className="relative" ref={menuRef}>
+        {/* Botón del perfil */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 group"
+        >
+          <div className="flex-shrink-0">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow duration-200">
+              <User className="h-4 w-4 text-white" />
+            </div>
           </div>
-        </div>
-        <div className="flex-1 min-w-0 text-left">
-          <p className="text-sm font-medium text-gray-700 truncate">{user?.name}</p>
-          <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-        </div>
-        <ChevronDown 
-          className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${
-            isOpen ? 'rotate-180' : ''
-          }`} 
-        />
-      </button>
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-sm font-medium text-gray-700 truncate">{user?.name}</p>
+            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+          </div>
+          <ChevronDown 
+            className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${
+              isOpen ? 'rotate-180' : ''
+            }`} 
+          />
+        </button>
 
-      {/* Menú desplegable */}
-      {isOpen && (
-        <div ref={menuRef} className="absolute bottom-full left-0 mb-2 w-full max-w-xs sm:max-w-sm md:max-w-md bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-fade-in">
-          {/* Header del menú */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 border-b border-gray-100">
-            <div className="flex items-center justify-between">
+        {/* Menú dropdown pequeño */}
+        {isOpen && (
+          <div className="absolute bottom-full left-0 mb-2 w-64 glass-dropdown overflow-hidden z-dropdown animate-fade-in">
+            {/* Header del menú pequeño */}
+            <div className="p-3 border-b border-white/30">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                   <User className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 truncate max-w-[120px] sm:max-w-[180px]">{user?.name}</h3>
-                  <p className="text-xs text-gray-600 truncate max-w-[120px] sm:max-w-[180px]">{user?.email}</p>
+                  <h3 className="text-sm font-semibold text-gray-900">{user?.name}</h3>
+                  <p className="text-xs text-gray-600">{user?.email}</p>
                 </div>
               </div>
+            </div>
+
+            {/* Opciones del menú */}
+            <div className="p-2">
               <button
-                onClick={() => setIsOpen(false)}
-                className="p-1 rounded-lg hover:bg-gray-100 transition-colors duration-200"
+                onClick={openSettings}
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-white/30 rounded-lg transition-colors duration-200"
               >
-                <X className="h-4 w-4 text-gray-500" />
+                <Settings className="h-4 w-4" />
+                Configuración
               </button>
+              
+              <button
+                onClick={openHelp}
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:bg-white/30 rounded-lg transition-colors duration-200"
+              >
+                <HelpCircle className="h-4 w-4" />
+                Ayuda
+              </button>
+              
+              <div className="border-t border-white/30 mt-2 pt-2">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50/50 rounded-lg transition-colors duration-200"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Cerrar sesión
+                </button>
+              </div>
             </div>
           </div>
+        )}
+      </div>
 
-          {/* Navegación por pestañas */}
-          <div className="p-3 sm:p-4">
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              {menuItems.map((item) => (
+      {/* Ventana flotante de configuraciones usando Portal */}
+      {showSettings && createPortal(
+        <div className="fixed inset-0 z-dropdown flex items-center justify-center p-4">
+          {/* Overlay de fondo */}
+          <div 
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm" 
+            onClick={() => setShowSettings(false)}
+          />
+          
+          {/* Ventana del menú */}
+          <div 
+            ref={settingsRef} 
+            className="relative w-full max-w-lg max-h-[90vh] overflow-hidden glass-modal animate-fade-in"
+          >
+            {/* Header del menú */}
+            <div className="bg-gradient-to-r from-blue-50/50 to-purple-50/50 p-4 border-b border-white/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                    <Settings className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Configuración</h3>
+                    <p className="text-sm text-gray-600">Administra tu cuenta y preferencias</p>
+                  </div>
+                </div>
                 <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center gap-2 p-2 sm:p-3 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 ${
-                    activeTab === item.id
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`}
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 rounded-lg hover:bg-white/20 transition-colors duration-200"
                 >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
+                  <X className="h-5 w-5 text-gray-500" />
                 </button>
-              ))}
+              </div>
             </div>
 
-            {/* Mensaje de feedback */}
-            {message.text && (
-              <div className={`p-2 sm:p-3 rounded-lg text-xs sm:text-sm flex items-center gap-2 ${
-                message.type === 'success' 
-                  ? 'bg-green-50 text-green-700 border border-green-200' 
-                  : 'bg-red-50 text-red-700 border border-red-200'
-              }`}>
-                {message.type === 'success' ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <AlertCircle className="h-4 w-4" />
-                )}
-                {message.text}
-              </div>
-            )}
+            {/* Contenido con scroll */}
+            <div className="overflow-y-auto max-h-[calc(90vh-120px)]">
+              {/* Navegación por pestañas */}
+              <div className="p-4">
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  {menuItems.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg text-xs font-medium transition-all duration-200 ${
+                        activeTab === item.id
+                          ? 'bg-blue-50/50 text-blue-700 border border-blue-200/50 shadow-sm'
+                          : 'text-gray-600 hover:bg-white/30 hover:text-gray-900 hover:shadow-sm'
+                      }`}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      <span className="text-center">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
 
-            {/* Contenido de las pestañas: asegúrate de que los formularios usen flex-col, w-full y paddings adaptativos */}
-            <div className="space-y-4">
+                {/* Mensaje de feedback */}
+                {message.text && (
+                  <div className={`p-3 rounded-lg text-sm flex items-center gap-2 mb-4 ${
+                    message.type === 'success' 
+                      ? 'bg-green-50/50 text-green-700 border border-green-200/50' 
+                      : 'bg-red-50/50 text-red-700 border border-red-200/50'
+                  }`}>
+                    {message.type === 'success' ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
+                    )}
+                    {message.text}
+                  </div>
+                )}
+
+                {/* Contenido de las pestañas */}
+                <div className="space-y-6">
               {activeTab === 'profile' && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <Edit className="h-4 w-4" />
+                  <div className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
+                    <Edit className="h-5 w-5" />
                     Información personal
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Nombre completo</label>
                       <input
                         type="text"
                         value={profileForm.name}
                         onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                        className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        className={`w-full px-4 py-3 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
                           errors.name ? 'border-red-300' : 'border-gray-300'
                         }`}
-                        placeholder="Tu nombre"
+                        placeholder="Ingresa tu nombre completo"
                       />
                       {errors.name && (
                         <p className="text-xs text-red-600 mt-1">{errors.name}</p>
                       )}
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Correo electrónico</label>
                       <input
                         type="email"
                         value={profileForm.email}
                         onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                        className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        className={`w-full px-4 py-3 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
                           errors.email ? 'border-red-300' : 'border-gray-300'
                         }`}
                         placeholder="tu@email.com"
@@ -443,7 +544,7 @@ const UserSettingsMenu = () => {
                     <button 
                       onClick={handleUpdateProfile}
                       disabled={loading}
-                      className="w-full btn-primary text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full btn-primary text-sm py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? 'Guardando...' : 'Guardar cambios'}
                     </button>
@@ -453,51 +554,51 @@ const UserSettingsMenu = () => {
 
               {activeTab === 'security' && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <Shield className="h-4 w-4" />
+                  <div className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
+                    <Shield className="h-5 w-5" />
                     Configuración de seguridad
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Contraseña actual</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Contraseña actual</label>
                       <input
                         type="password"
                         value={passwordForm.currentPassword}
                         onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                        className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        className={`w-full px-4 py-3 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
                           errors.currentPassword ? 'border-red-300' : 'border-gray-300'
                         }`}
-                        placeholder="••••••••"
+                        placeholder="Ingresa tu contraseña actual"
                       />
                       {errors.currentPassword && (
                         <p className="text-xs text-red-600 mt-1">{errors.currentPassword}</p>
                       )}
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Nueva contraseña</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Nueva contraseña</label>
                       <input
                         type="password"
                         value={passwordForm.newPassword}
                         onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                        className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        className={`w-full px-4 py-3 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
                           errors.newPassword ? 'border-red-300' : 'border-gray-300'
                         }`}
-                        placeholder="••••••••"
+                        placeholder="Ingresa tu nueva contraseña"
                       />
                       {errors.newPassword && (
                         <p className="text-xs text-red-600 mt-1">{errors.newPassword}</p>
                       )}
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Confirmar nueva contraseña</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Confirmar nueva contraseña</label>
                       <input
                         type="password"
                         value={passwordForm.confirmPassword}
                         onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                        className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        className={`w-full px-4 py-3 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${
                           errors.confirmPassword ? 'border-red-300' : 'border-gray-300'
                         }`}
-                        placeholder="••••••••"
+                        placeholder="Confirma tu nueva contraseña"
                       />
                       {errors.confirmPassword && (
                         <p className="text-xs text-red-600 mt-1">{errors.confirmPassword}</p>
@@ -506,7 +607,7 @@ const UserSettingsMenu = () => {
                     <button 
                       onClick={handleChangePassword}
                       disabled={loading}
-                      className="w-full btn-primary text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full btn-primary text-sm py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? 'Cambiando...' : 'Cambiar contraseña'}
                     </button>
@@ -516,15 +617,15 @@ const UserSettingsMenu = () => {
 
               {activeTab === 'notifications' && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <Bell className="h-4 w-4" />
+                  <div className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
+                    <Bell className="h-5 w-5" />
                     Preferencias de notificaciones
                   </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div>
                         <p className="text-sm font-medium text-gray-700">Notificaciones por email</p>
-                        <p className="text-xs text-gray-500">Recibir alertas por correo</p>
+                        <p className="text-xs text-gray-500">Recibir alertas por correo electrónico</p>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input 
@@ -536,7 +637,7 @@ const UserSettingsMenu = () => {
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                       </label>
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div>
                         <p className="text-sm font-medium text-gray-700">Notificaciones push</p>
                         <p className="text-xs text-gray-500">Alertas en el navegador</p>
@@ -551,7 +652,7 @@ const UserSettingsMenu = () => {
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                       </label>
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div>
                         <p className="text-sm font-medium text-gray-700">Recordatorios de metas</p>
                         <p className="text-xs text-gray-500">Alertas de metas próximas a vencer</p>
@@ -569,7 +670,7 @@ const UserSettingsMenu = () => {
                     <button 
                       onClick={handleUpdatePreferences}
                       disabled={loading}
-                      className="w-full btn-primary text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full btn-primary text-sm py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? 'Guardando...' : 'Guardar preferencias'}
                     </button>
@@ -577,83 +678,38 @@ const UserSettingsMenu = () => {
                 </div>
               )}
 
-              {activeTab === 'appearance' && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <Palette className="h-4 w-4" />
-                    Personalización
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sun className="h-4 w-4 text-gray-600" />
-                        <span className="text-sm text-gray-700">Tema claro</span>
-                      </div>
-                      <input 
-                        type="radio" 
-                        name="theme" 
-                        value="light" 
-                        checked={preferences.theme === 'light'}
-                        onChange={(e) => setPreferences({ ...preferences, theme: e.target.value })}
-                        className="text-blue-600" 
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Moon className="h-4 w-4 text-gray-600" />
-                        <span className="text-sm text-gray-700">Tema oscuro</span>
-                      </div>
-                      <input 
-                        type="radio" 
-                        name="theme" 
-                        value="dark" 
-                        checked={preferences.theme === 'dark'}
-                        onChange={(e) => setPreferences({ ...preferences, theme: e.target.value })}
-                        className="text-blue-600" 
-                      />
-                    </div>
-                    <button 
-                      onClick={handleUpdatePreferences}
-                      disabled={loading}
-                      className="w-full btn-primary text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? 'Aplicando...' : 'Aplicar tema'}
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {activeTab === 'data' && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <Database className="h-4 w-4" />
+                  <div className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
+                    <Database className="h-5 w-5" />
                     Gestión de datos
                   </div>
                   <div className="space-y-3">
                     <button 
                       onClick={() => handleExportData('all')}
-                      className="w-full flex items-center justify-center gap-2 btn-secondary text-sm py-2 hover:bg-gray-100 transition-colors"
+                      className="w-full flex items-center justify-center gap-3 btn-secondary text-sm py-3 hover:bg-gray-100 transition-colors"
                     >
-                      <Download className="h-4 w-4" />
+                      <Download className="h-5 w-5" />
                       Exportar todos mis datos
                     </button>
                     <button 
                       onClick={() => handleExportData('transactions')}
-                      className="w-full flex items-center justify-center gap-2 btn-secondary text-sm py-2 hover:bg-gray-100 transition-colors"
+                      className="w-full flex items-center justify-center gap-3 btn-secondary text-sm py-3 hover:bg-gray-100 transition-colors"
                     >
-                      <Download className="h-4 w-4" />
+                      <Download className="h-5 w-5" />
                       Exportar transacciones
                     </button>
                     <button 
                       onClick={() => handleExportData('reports')}
-                      className="w-full flex items-center justify-center gap-2 btn-secondary text-sm py-2 hover:bg-gray-100 transition-colors"
+                      className="w-full flex items-center justify-center gap-3 btn-secondary text-sm py-3 hover:bg-gray-100 transition-colors"
                     >
-                      <Download className="h-4 w-4" />
+                      <Download className="h-5 w-5" />
                       Exportar reportes
                     </button>
-                    <div className="pt-2">
-                      <p className="text-xs text-gray-500">
-                        Tus datos se exportarán en formato CSV
+                    <div className="pt-3 px-3 py-2 bg-blue-50 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        💡 Tus datos se exportarán en formato CSV compatible con Excel
                       </p>
                     </div>
                   </div>
@@ -662,53 +718,159 @@ const UserSettingsMenu = () => {
 
               {activeTab === 'about' && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                    <Info className="h-4 w-4" />
+                  <div className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
+                    <Info className="h-5 w-5" />
                     Información de la aplicación
                   </div>
-                  <div className="space-y-3">
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <h4 className="text-sm font-semibold text-gray-900 mb-2">Finanzas Personales</h4>
-                      <p className="text-xs text-gray-600 mb-2">
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4">
+                      <h4 className="text-base font-semibold text-gray-900 mb-2">Finanzas Personales</h4>
+                      <p className="text-sm text-gray-600 mb-2">
                         Versión 1.0.0
                       </p>
-                      <p className="text-xs text-gray-600">
+                      <p className="text-sm text-gray-600">
                         Aplicación para el control y gestión de finanzas personales
                       </p>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">Cuenta creada:</span>
-                        <span className="text-gray-900">Hace 30 días</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">Último acceso:</span>
-                        <span className="text-gray-900">Hoy</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-600">Transacciones:</span>
-                        <span className="text-gray-900">127</span>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h5 className="text-sm font-semibold text-gray-700 mb-3">Estadísticas de tu cuenta</h5>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Cuenta creada:</span>
+                          <span className="text-gray-900 font-medium">Hace 30 días</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Último acceso:</span>
+                          <span className="text-gray-900 font-medium">Hoy</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Transacciones:</span>
+                          <span className="text-gray-900 font-medium">127</span>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Footer con cerrar sesión */}
+            <div className="border-t border-white/30 p-4">
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50/50 py-3 px-4 rounded-lg transition-colors duration-200"
+              >
+                <LogOut className="h-5 w-5" />
+                Cerrar sesión
+              </button>
             </div>
           </div>
-
-          {/* Footer con cerrar sesión */}
-          <div className="border-t border-gray-200 p-4">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 py-2 px-3 rounded-lg transition-colors duration-200"
-            >
-              <LogOut className="h-4 w-4" />
-              Cerrar sesión
-            </button>
-          </div>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+
+      {/* Ventana flotante de ayuda usando Portal */}
+      {showHelp && createPortal(
+        <div className="fixed inset-0 z-dropdown flex items-center justify-center p-4">
+          {/* Overlay de fondo */}
+          <div 
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm" 
+            onClick={() => setShowHelp(false)}
+          />
+          
+          {/* Ventana de ayuda */}
+          <div 
+            ref={helpRef} 
+            className="relative w-full max-w-2xl max-h-[90vh] overflow-hidden glass-modal animate-fade-in"
+          >
+            {/* Header de ayuda */}
+            <div className="bg-gradient-to-r from-green-50/50 to-blue-50/50 p-4 border-b border-white/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center shadow-lg">
+                    <HelpCircle className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Centro de Ayuda</h3>
+                    <p className="text-sm text-gray-600">Guías y respuestas frecuentes</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowHelp(false)}
+                  className="p-2 rounded-lg hover:bg-white/20 transition-colors duration-200"
+                >
+                  <X className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
+            </div>
+
+            {/* Contenido de ayuda con scroll */}
+            <div className="overflow-y-auto max-h-[calc(90vh-120px)] p-6">
+              <div className="space-y-6">
+                
+                {/* Inicio rápido */}
+                <div className="glass-card bg-blue-50/30 p-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Info className="h-5 w-5 text-blue-600" />
+                    Como usar la aplicacion
+                  </h4>
+                  <div className="space-y-3 text-sm text-gray-700">
+                    <p><strong>Dashboard:</strong> Visualiza el resumen de tus finanzas</p>
+                    <p><strong>Transacciones:</strong> Usa el boton + para agregar ingresos y gastos</p>
+                    <p><strong>Presupuestos:</strong> Establece limites de gasto mensuales</p>
+                    <p><strong>Metas:</strong> Crea objetivos de ahorro</p>
+                    <p><strong>Reportes:</strong> Analiza tus patrones de gasto</p>
+                  </div>
+                </div>
+
+                {/* Preguntas frecuentes */}
+                <div className="glass-card bg-green-50/30 p-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <HelpCircle className="h-5 w-5 text-green-600" />
+                    Preguntas Frecuentes
+                  </h4>
+                  <div className="space-y-4">
+                    <div>
+                      <h5 className="font-semibold text-gray-800 mb-2">Como agrego una transaccion?</h5>
+                      <p className="text-sm text-gray-600">
+                        Haz clic en el boton + en cualquier pagina para abrir el formulario de nueva transaccion.
+                      </p>
+                    </div>
+                    <div>
+                      <h5 className="font-semibold text-gray-800 mb-2">Puedo editar transacciones?</h5>
+                      <p className="text-sm text-gray-600">
+                        Si, en la pagina de Transacciones puedes hacer clic en cualquier transaccion para editarla.
+                      </p>
+                    </div>
+                    <div>
+                      <h5 className="font-semibold text-gray-800 mb-2">Como funcionan los presupuestos?</h5>
+                      <p className="text-sm text-gray-600">
+                        Los presupuestos te permiten establecer limites de gasto por categoria cada mes.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contacto */}
+                <div className="glass-card bg-gray-50/30 p-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Mail className="h-5 w-5 text-gray-600" />
+                    Necesitas mas ayuda?
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    Si tienes preguntas adicionales o necesitas soporte, puedes contactarnos a traves de la configuracion de tu cuenta.
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   )
 }
 

@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Pagination = ({ pagination, setPagination }) => {
-  if (pagination.pages <= 1) return null;
+  if (!pagination || typeof pagination.pages !== 'number' || pagination.pages <= 1) return null;
   return (
     <div className="flex items-center justify-between mt-6">
       <div className="text-sm text-gray-700">

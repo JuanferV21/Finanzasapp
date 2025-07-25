@@ -8,7 +8,7 @@
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 text-gray-900;
   }
 }
 
@@ -43,6 +43,76 @@
   
   .select {
     @apply input appearance-none bg-white;
+  }
+
+  /* Glass Effect Components */
+  .glass {
+    @apply bg-white/10 backdrop-blur-md border border-white/20 shadow-lg;
+  }
+  
+  .glass-white {
+    @apply bg-white/80 backdrop-blur-md border border-white/30 shadow-lg;
+  }
+  
+  .glass-dark {
+    @apply bg-gray-900/10 backdrop-blur-md border border-gray-800/20 shadow-lg;
+  }
+  
+  .glass-primary {
+    @apply bg-primary-500/10 backdrop-blur-md border border-primary-500/20 shadow-lg;
+  }
+  
+  .glass-card {
+    @apply glass-white rounded-xl p-6;
+  }
+  
+  .glass-modal {
+    @apply glass-white rounded-xl shadow-2xl;
+  }
+  
+  .glass-sidebar {
+    @apply glass-white border-r border-white/30;
+  }
+  
+  .glass-navbar {
+    @apply glass-white border-b border-white/30;
+  }
+  
+  .glass-dropdown {
+    @apply glass-white rounded-xl shadow-2xl border border-white/30;
+  }
+  
+  .glass-button {
+    @apply glass backdrop-blur-sm rounded-lg px-4 py-2 font-medium transition-all duration-200 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30;
+  }
+  
+  .glass-input {
+    @apply glass-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50;
+  }
+
+  /* Z-index hierarchy for better layer management */
+  .z-dropdown {
+    z-index: 9999;
+  }
+  
+  .z-modal {
+    z-index: 1000;
+  }
+  
+  .z-overlay {
+    z-index: 999;
+  }
+  
+  .z-sidebar-mobile {
+    z-index: 50;
+  }
+  
+  .z-navbar {
+    z-index: 40;
+  }
+  
+  .z-tooltip {
+    z-index: 30;
   }
 }
 

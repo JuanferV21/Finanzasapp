@@ -21,6 +21,7 @@ import BudgetModal from '../components/BudgetModal';
 import { startOfMonth, format as formatDate } from 'date-fns';
 import { goalService } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6B7280']
 
@@ -172,97 +173,26 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 text-sm sm:text-base">Resumen de tus finanzas personales</p>
-        </div>
-        <button
-          onClick={() => setShowTransactionModal(true)}
-          className="btn-primary flex items-center gap-2 w-full sm:w-auto justify-center"
-        >
-          <Plus className="h-4 w-4" />
-          Nueva transacción
-        </button>
-      </div>
-
-      {/* Tarjetas de resumen */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-6">
-        <div className="card flex flex-col gap-3 justify-between min-h-[140px] sm:min-h-[170px] w-full max-w-full">
-          <div className="flex items-center gap-2 text-lg font-bold text-primary-700"><Trophy className="h-5 w-5 text-yellow-500" /> Metas</div>
-          {goalsLoading ? (
-            <div className="h-12 flex items-center">Cargando metas...</div>
-          ) : totalGoals === 0 ? (
-            <div className="flex flex-col gap-2">
-              <div className="text-gray-500">No tienes metas aún.</div>
-              <button className="btn-primary mt-2 w-fit" onClick={() => navigate('/goals')}>
-                <Plus className="h-4 w-4" /> Agregar meta
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="flex gap-4 items-center">
-                <span className="text-2xl font-bold">{achievedGoals}</span>
-                <span className="text-gray-600">alcanzadas de</span>
-                <span className="text-2xl font-bold">{totalGoals}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-600">Progreso global:</span>
-                <span className="font-bold text-primary-700">{globalProgress}%</span>
-              </div>
-              {upcomingGoals.length > 0 && (
-                <div className="mt-2 text-xs text-yellow-700 bg-yellow-100 px-2 py-1 rounded">
-                  {upcomingGoals.length} meta(s) próxima(s) a vencer
-                </div>
-              )}
-              <div className="flex gap-2 mt-3">
-                <button className="btn-primary flex-1" onClick={() => navigate('/goals')} title="Ver todas las metas">
-                  Ver metas
-                </button>
-                <button className="btn-secondary flex-1" onClick={() => navigate('/goals')} title="Agregar una nueva meta">
-                  <Plus className="h-4 w-4" /> Agregar meta
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="card flex flex-col gap-3 min-h-[170px]">
-          <div className="flex items-center gap-2 text-lg font-bold text-yellow-700"><Trophy className="h-5 w-5" /> Logros recientes</div>
-          {recentAchievements.length === 0 ? (
-            <div className="text-gray-500">Aún no has desbloqueado logros.</div>
-          ) : (
-            <div className="flex flex-wrap gap-2 mt-1">
-              {recentAchievements.map(key => {
-                const l = LOGROS.find(l => l.key === key);
-                return l ? (
-                  <span key={l.key} className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-semibold shadow-sm animate-fade-in" title={l.label}>
-                    {l.emoji} {l.label}
-                  </span>
-                ) : null;
-              })}
-            </div>
-          )}
-        </div>
-        <div className="card flex flex-col gap-3 min-h-[170px] justify-between bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <div className="flex items-center gap-2 text-lg font-bold text-blue-700">
-            <Info className="h-5 w-5" /> Tips para tus metas
-          </div>
-          <ul className="text-xs text-blue-900 list-disc pl-5 space-y-1">
-            <li>Define metas con fecha límite y monto claro.</li>
-            <li>Haz aportes pequeños pero constantes.</li>
-            <li>Revisa tu progreso cada semana.</li>
-            <li>¡Celebra cada logro desbloqueado!</li>
-          </ul>
-          <button className="btn-secondary mt-2 w-fit self-end" onClick={() => navigate('/goals')} title="Ir a metas">
-            Ir a metas
+      <PageHeader
+        title="Dashboard"
+        subtitle="Resumen de tus finanzas personales"
+        actions={
+          <button
+            onClick={() => setShowTransactionModal(true)}
+            className="btn-primary flex items-center gap-2 w-full sm:w-auto justify-center"
+          >
+            <Plus className="h-4 w-4" />
+            Nueva transacción
           </button>
-        </div>
-      </div>
+        }
+        gradientFrom="from-yellow-50"
+        gradientTo="to-orange-50"
+        borderColor="border-yellow-200"
+      />
 
       {/* Tarjetas de estadísticas principales */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <div className="card bg-gradient-to-br from-green-50 to-green-100 border-green-200 hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0">
+        <div className="glass-card bg-gradient-to-br from-green-50/50 to-green-100/50 border-green-200/50 hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className="flex-shrink-0">
@@ -302,7 +232,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="card bg-gradient-to-br from-red-50 to-red-100 border-red-200 hover:shadow-lg transition-all duration-300">
+        <div className="glass-card bg-gradient-to-br from-red-50/50 to-red-100/50 border-red-200/50 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className="flex-shrink-0">
@@ -342,7 +272,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 hover:shadow-lg transition-all duration-300">
+        <div className="glass-card bg-gradient-to-br from-blue-50/50 to-blue-100/50 border-blue-200/50 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className="flex-shrink-0">
@@ -373,7 +303,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="card bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 hover:shadow-lg transition-all duration-300">
+        <div className="glass-card bg-gradient-to-br from-purple-50/50 to-purple-100/50 border-purple-200/50 hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className="flex-shrink-0">
@@ -407,7 +337,7 @@ const Dashboard = () => {
       {/* Gráficas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Gráfica circular de gastos por categoría */}
-        <div className="card hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0">
+        <div className="glass-card hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Gastos por Categoría</h3>
@@ -464,7 +394,7 @@ const Dashboard = () => {
         </div>
 
         {/* Gráfica de barras de evolución mensual */}
-        <div className="card hover:shadow-lg transition-all duration-300">
+        <div className="glass-card hover:shadow-lg transition-all duration-300">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Evolución Mensual</h3>
@@ -535,7 +465,7 @@ const Dashboard = () => {
 
       {/* Barras de progreso de presupuesto por categoría de gastos */}
       {budgetCategories.length > 0 && budgetType === 'expense' && budgets.length > 0 && (
-        <div className="card hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0">
+        <div className="glass-card hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Progreso de Presupuesto - Gastos</h3>
@@ -623,7 +553,7 @@ const Dashboard = () => {
 
       {/* Barras de progreso de presupuesto por categoría de ingresos */}
       {budgetCategories.length > 0 && budgetType === 'income' && budgets.length > 0 && (
-        <div className="card hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0">
+        <div className="glass-card hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Progreso de Presupuesto - Ingresos</h3>
@@ -710,7 +640,7 @@ const Dashboard = () => {
       )}
 
       {/* Transacciones recientes */}
-      <div className="card hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0 overflow-x-auto">
+      <div className="glass-card hover:shadow-lg transition-all duration-300 w-full max-w-full min-w-0 overflow-x-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Transacciones Recientes</h3>

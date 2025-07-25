@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
+const { authLimiter, sensitiveOpLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ const generateToken = (userId) => {
 };
 
 // POST /api/auth/register - Registrar nuevo usuario
-router.post('/register', [
+router.post('/register', authLimiter, [
   body('name')
     .trim()
     .isLength({ min: 2, max: 50 })
@@ -76,7 +77,7 @@ router.post('/register', [
 });
 
 // POST /api/auth/login - Iniciar sesión
-router.post('/login', [
+router.post('/login', authLimiter, [
   body('email')
     .isEmail()
     .normalizeEmail()
@@ -226,7 +227,7 @@ router.put('/me', auth, [
 });
 
 // POST /api/auth/change-password - Cambiar contraseña
-router.post('/change-password', auth, [
+router.post('/change-password', sensitiveOpLimiter, auth, [
   body('currentPassword')
     .notEmpty()
     .withMessage('La contraseña actual es requerida'),

@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { pushService } from '../services/api';
+import PageHeader from '../components/PageHeader';
 
 const initialForm = {
   nombre: '',
@@ -545,7 +546,7 @@ const Goals = () => {
         </div>
       ))}
       {successMsg && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-100 text-green-800 px-6 py-2 rounded shadow-lg z-50 animate-fade-in">
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-100 text-green-800 px-6 py-2 rounded shadow-lg z-modal animate-fade-in">
           {successMsg}
         </div>
       )}
@@ -559,8 +560,8 @@ const Goals = () => {
       </div>
       {/* Banner/modal de celebración */}
       {showAchievement && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 animate-fade-in" onClick={() => setShowAchievement(null)}>
-          <div className="bg-white rounded-lg shadow-lg p-8 flex flex-col items-center gap-4 animate-modal-in">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in" onClick={() => setShowAchievement(null)}>
+          <div className="glass-modal p-8 flex flex-col items-center gap-4 animate-modal-in">
             <div className="text-5xl">{LOGROS.find(l => l.key === showAchievement)?.emoji || '🎉'}</div>
             <div className="text-xl font-bold text-yellow-700">¡Logro desbloqueado!</div>
             <div className="text-lg font-semibold">{LOGROS.find(l => l.key === showAchievement)?.label}</div>
@@ -569,22 +570,24 @@ const Goals = () => {
           </div>
         </div>
       )}
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Metas de Ahorro</h1>
-          <p className="text-gray-600 text-sm sm:text-base">Define, visualiza y alcanza tus metas financieras</p>
-        </div>
-        <button className="btn-primary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={() => openModal()}>
-          <Plus className="h-4 w-4" />
-          Nueva meta
-        </button>
-      </div>
+      <PageHeader
+        title="Metas de Ahorro"
+        subtitle="Define, visualiza y alcanza tus metas financieras"
+        actions={
+          <button className="btn-primary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={() => openModal()}>
+            <Plus className="h-4 w-4" />
+            Nueva meta
+          </button>
+        }
+        gradientFrom="from-purple-50"
+        gradientTo="to-blue-50"
+        borderColor="border-purple-200"
+      />
 
       {/* Lista de metas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
         {goals.map(goal => (
-          <div key={goal._id} className="card flex flex-col gap-3 w-full max-w-full min-w-0">
+          <div key={goal._id} className="glass-card flex flex-col gap-3 w-full max-w-full min-w-0">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-1">
                 {goal.montoAhorrado >= goal.montoObjetivo ? <CheckCircle className="text-green-500 h-5 w-5 animate-bounce" title="Meta alcanzada" /> : null} {goal.nombre}
@@ -644,7 +647,7 @@ const Goals = () => {
 
       {/* Tabla de contribuciones (si aplica) */}
       {showContributions && (
-        <div className="card w-full max-w-full min-w-0 overflow-x-auto">
+        <div className="glass-card w-full max-w-full min-w-0 overflow-x-auto">
           <div className="overflow-x-auto">
             <table className="min-w-[600px] w-full text-sm text-left">
               <thead>
@@ -677,8 +680,8 @@ const Goals = () => {
 
       {/* Modal para agregar/editar meta */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 animate-fade-in" onKeyDown={e => e.key === 'Escape' && setShowModal(false)}>
-          <form className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md space-y-4 relative animate-modal-in" onSubmit={handleSave}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in" onKeyDown={e => e.key === 'Escape' && setShowModal(false)}>
+          <form className="glass-modal p-6 w-full max-w-md space-y-4 relative animate-modal-in" onSubmit={handleSave}>
             <h2 className="text-xl font-bold mb-2">{editingId ? 'Editar meta' : 'Agregar meta'}</h2>
             <div>
               <label className="block text-sm font-medium text-gray-700">Nombre</label>
@@ -749,8 +752,8 @@ const Goals = () => {
       )}
       {/* Modal de historial de aportes */}
       {showContributions && contribGoal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 animate-fade-in" onClick={e => { if (e.target === e.currentTarget) { setShowContributions(false); setContribForm({ monto: '', fecha: '', nota: '' }); setEditingContribId(null); } }} onKeyDown={e => e.key === 'Escape' && setShowContributions(false)}>
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg space-y-4 relative animate-modal-in">
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in" onClick={e => { if (e.target === e.currentTarget) { setShowContributions(false); setContribForm({ monto: '', fecha: '', nota: '' }); setEditingContribId(null); } }} onKeyDown={e => e.key === 'Escape' && setShowContributions(false)}>
+          <div className="glass-modal p-6 w-full max-w-lg space-y-4 relative animate-modal-in">
             <h2 className="text-xl font-bold mb-2">Aportes a "{contribGoal.nombre}"</h2>
             <div className="flex justify-end gap-2 mb-2">
               <button className="btn-secondary text-xs" onClick={() => exportContributionsToCSV(contribGoal, contributions)} title="Exportar aportes a CSV">Exportar CSV</button>

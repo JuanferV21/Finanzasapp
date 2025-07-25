@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { budgetService, statsService } from '../services/api';
 import BudgetModal from '../components/BudgetModal';
+import PageHeader from '../components/PageHeader';
 import { 
   Trash2, 
   Edit, 
@@ -9,7 +10,6 @@ import {
   Download,
   FileText,
   Target,
-  TrendingUp,
   TrendingDown,
   DollarSign,
   BarChart3,
@@ -88,8 +88,6 @@ const Budgets = () => {
 
   // Resumen
   const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
-  // Gastado por categoría (puedes mejorar esto si tienes stats de gastos por categoría)
-  const getSpent = (cat) => cat.value ? (cat.value) : 0;
 
   // Eliminar presupuesto
   const handleDelete = async (id) => {
@@ -169,14 +167,12 @@ const Budgets = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header mejorado */}
-      <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-xl p-4 sm:p-6 border border-orange-200">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
-          <div>
-            <h1 className="text-xl sm:text-3xl font-bold text-gray-900 mb-2">Presupuestos</h1>
-            <p className="text-gray-600 text-sm sm:text-base">Planifica y controla tus gastos mensuales por categoría</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+      {/* Header mejorado unificado */}
+      <PageHeader
+        title="Presupuestos"
+        subtitle="Planifica y controla tus gastos mensuales por categoría"
+        actions={
+          <>
             <button 
               className="btn-secondary flex items-center gap-2 w-full sm:w-auto justify-center hover:shadow-md transition-all duration-200"
               onClick={handleExportCSV}
@@ -201,9 +197,9 @@ const Budgets = () => {
               <Plus className="h-4 w-4" />
               Agregar
             </button>
-          </div>
-        </div>
-
+          </>
+        }
+      >
         {/* Estadísticas rápidas */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg p-4 border border-orange-100 shadow-sm hover:shadow-md transition-all duration-200">
@@ -219,7 +215,6 @@ const Budgets = () => {
               </div>
             </div>
           </div>
-          
           <div className="bg-white rounded-lg p-4 border border-green-100 shadow-sm hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
@@ -233,7 +228,6 @@ const Budgets = () => {
               </div>
             </div>
           </div>
-          
           <div className="bg-white rounded-lg p-4 border border-blue-100 shadow-sm hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
@@ -251,7 +245,6 @@ const Budgets = () => {
               </div>
             </div>
           </div>
-          
           <div className="bg-white rounded-lg p-4 border border-purple-100 shadow-sm hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <div>
@@ -266,10 +259,10 @@ const Budgets = () => {
             </div>
           </div>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Controles mejorados */}
-      <div className="card hover:shadow-lg transition-all duration-300">
+      <div className="glass-card hover:shadow-lg transition-all duration-300">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-gray-600" />
@@ -318,7 +311,7 @@ const Budgets = () => {
       </div>
 
       {/* Tabla de presupuestos mejorada */}
-      <div className="card hover:shadow-lg transition-all duration-300" ref={tableRef}>
+      <div className="glass-card hover:shadow-lg transition-all duration-300" ref={tableRef}>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Presupuestos por categoría</h3>

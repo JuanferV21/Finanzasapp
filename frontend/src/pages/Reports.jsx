@@ -19,10 +19,13 @@ import {
   PieChart as PieChartIcon,
   Activity
 } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
+import AdvancedReports from '../components/AdvancedReports';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6B7280'];
 
 const Reports = () => {
+  const [activeTab, setActiveTab] = useState('standard'); // 'standard' o 'advanced'
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: ''
@@ -80,9 +83,16 @@ const Reports = () => {
             .map(t => ({ desc: t.description, monto: t.amount }))
         );
 
-        // 5. Presupuestos vs realidad (solo mes actual)
-        const now = new Date();
-        const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        // 5. Presupuestos vs realidad (usar mes del filtro si existe)
+        let monthStr;
+        if (filters.startDate && /^\d{4}-\d{2}-\d{2}$/.test(filters.startDate)) {
+          // Si el filtro es por mes, extraer año-mes
+          monthStr = filters.startDate.slice(0, 7);
+        } else {
+          // Por defecto, mes actual
+          const now = new Date();
+          monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
         const budgetsRes = await budgetService.getAll({ month: monthStr });
         setBudgets(budgetsRes.data || []);
       } catch (err) {
@@ -253,35 +263,259 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Reportes</h1>
-          <p className="text-gray-600 text-sm sm:text-base">Visualiza y exporta tus reportes financieros</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <button className="btn-secondary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={handleExportCSV}>
-            <Download className="h-4 w-4" />
-            Exportar CSV
-          </button>
-          <button className="btn-secondary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={handleExportPDF}>
-            <FileText className="h-4 w-4" />
-            Exportar PDF
-          </button>
-        </div>
+      <PageHeader
+        title="Reportes"
+        subtitle="Visualiza y exporta tus reportes financieros"
+        actions={
+          activeTab === 'standard' ? (
+            <>
+              <button className="btn-secondary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={handleExportCSV} disabled={exportingCSV}>
+                <Download className="h-4 w-4" />
+                {exportingCSV ? 'Exportando...' : 'Exportar CSV'}
+              </button>
+              <button className="btn-secondary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={handleExportPDF} disabled={exportingPDF}>
+                <FileText className="h-4 w-4" />
+                {exportingPDF ? 'Exportando...' : 'Exportar PDF'}
+              </button>
+            </>
+          ) : null
+        }
+        gradientFrom="from-blue-50"
+        gradientTo="to-purple-50"
+        borderColor="border-blue-200"
+      />
+
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('standard')}
+          className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === 'standard'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Reportes Estándar
+        </button>
+        <button
+          onClick={() => setActiveTab('advanced')}
+          className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === 'advanced'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Reportes Avanzados
+        </button>
       </div>
+
+      {/* Contenido según pestaña activa */}
+      {activeTab === 'standard' ? (
+        <>
+          {/* Filtros rápidos */}
+          <div className="flex flex-wrap gap-2 mb-2">
+            <button className="btn-secondary text-xs" onClick={() => setQuickFilter('month')}>Este mes</button>
+            <button className="btn-secondary text-xs" onClick={() => setQuickFilter('lastMonth')}>Mes anterior</button>
+            <button className="btn-secondary text-xs" onClick={() => setQuickFilter('year')}>Este año</button>
+            <button className="btn-secondary text-xs" onClick={() => setQuickFilter('all')}>Todo</button>
+          </div>
 
       {/* Gráficas y tablas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="card w-full max-w-full min-w-0">
-          {/* Gráfica o tabla 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6" ref={reportRef}>
+        {/* Gráfica de pastel ingresos vs gastos */}
+        <div className="glass-card w-full max-w-full min-w-0 flex flex-col items-center justify-center">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><PieChartIcon className="h-5 w-5" /> Ingresos vs Gastos</h2>
+          {loading ? <Skeleton height={200} /> : (
+            summaryData.every(d => d.value === 0) ? (
+              <div className="text-gray-500 text-center py-8">No hay datos suficientes para mostrar la gráfica de ingresos vs gastos.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220} minWidth={220}>
+                <PieChart>
+                  <Pie
+                    data={summaryData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={70}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {summaryData.map((entry, idx) => (
+                      <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={v => `$${v.toLocaleString()}`} />
+                </PieChart>
+              </ResponsiveContainer>
+            )
+          )}
+          <div className="flex justify-center gap-4 mt-4">
+            <div className="flex items-center gap-2"><span className="inline-block w-3 h-3 rounded-full" style={{background: COLORS[0]}}></span> Ingresos: <b>${summary.totalIncome.toLocaleString()}</b></div>
+            <div className="flex items-center gap-2"><span className="inline-block w-3 h-3 rounded-full" style={{background: COLORS[1]}}></span> Gastos: <b>${summary.totalExpense.toLocaleString()}</b></div>
+          </div>
         </div>
-        <div className="card w-full max-w-full min-w-0 overflow-x-auto">
-          {/* Gráfica o tabla 2, con scroll horizontal si es necesario */}
+
+        {/* Gráfica de barras de gastos por categoría */}
+        <div className="glass-card w-full max-w-full min-w-0 overflow-x-auto">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Gastos por Categoría</h2>
+          {loading ? <Skeleton height={200} /> : (
+            categoryData.length === 0 ? (
+              <div className="text-gray-500 text-center py-8">No hay gastos registrados en este periodo.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220} minWidth={220}>
+                <BarChart data={categoryData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }} onClick={handleBarClick}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                  <YAxis tickFormatter={v => `$${v}`} />
+                  <Tooltip content={<CategoryTooltip />} />
+                  <Bar dataKey="value" fill="#3B82F6">
+                    {categoryData.map((entry, idx) => (
+                      <Cell key={`cell-bar-${idx}`} fill={COLORS[idx % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )
+          )}
         </div>
       </div>
 
-      {/* Más secciones de reportes, todas con clases responsive y scroll horizontal en tablas */}
+      {/* Gráfica de línea de evolución mensual */}
+      <div className="glass-card w-full max-w-full min-w-0">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><Activity className="h-5 w-5" /> Evolución Mensual</h2>
+        {loading ? <Skeleton height={200} /> : (
+          monthlyData.length === 0 ? (
+            <div className="text-gray-500 text-center py-8">No hay datos suficientes para mostrar la evolución mensual.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220} minWidth={220}>
+              <LineChart data={monthlyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }} onClick={handleLineClick}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                <YAxis tickFormatter={v => `$${v}`} />
+                <Tooltip formatter={v => `$${v.toLocaleString()}`} />
+                <Line type="monotone" dataKey="income" stroke="#10B981" name="Ingresos" />
+                <Line type="monotone" dataKey="expense" stroke="#EF4444" name="Gastos" />
+              </LineChart>
+            </ResponsiveContainer>
+          )
+        )}
+      </div>
+
+      {/* Top gastos e ingresos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="glass-card w-full max-w-full min-w-0">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><TrendingDown className="h-5 w-5" /> Top 5 Gastos</h2>
+          {loading ? <Skeleton height={120} /> : (
+            topGastos.length === 0 ? (
+              <div className="text-gray-500 text-center py-8">No hay gastos registrados para mostrar.</div>
+            ) : (
+              <table className="min-w-full text-sm">
+                <thead><tr><th className="text-left">Descripción</th><th className="text-right">Monto</th></tr></thead>
+                <tbody>
+                  {topGastos.map((g, idx) => (
+                    <tr key={idx} className="border-b last:border-0">
+                      <td>{g.desc}</td>
+                      <td className="text-right">${g.monto.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          )}
+        </div>
+        <div className="glass-card w-full max-w-full min-w-0">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><TrendingUp className="h-5 w-5" /> Top 5 Ingresos</h2>
+          {loading ? <Skeleton height={120} /> : (
+            topIngresos.length === 0 ? (
+              <div className="text-gray-500 text-center py-8">No hay ingresos registrados para mostrar.</div>
+            ) : (
+              <table className="min-w-full text-sm">
+                <thead><tr><th className="text-left">Descripción</th><th className="text-right">Monto</th></tr></thead>
+                <tbody>
+                  {topIngresos.map((g, idx) => (
+                    <tr key={idx} className="border-b last:border-0">
+                      <td>{g.desc}</td>
+                      <td className="text-right">${g.monto.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* Presupuestos vs Realidad */}
+      <div className="glass-card w-full max-w-full min-w-0 overflow-x-auto">
+        <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><Target className="h-5 w-5" /> Presupuestos vs Realidad</h2>
+        {loading ? <Skeleton height={120} /> : (
+          budgets.length === 0 ? (
+            <div className="text-gray-500 text-center py-8">No hay presupuestos configurados para este periodo.</div>
+          ) : (
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="text-left">Categoría</th>
+                  <th className="text-right">Presupuesto</th>
+                  <th className="text-right">Gastado</th>
+                  <th className="text-right">Diferencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {budgets.map((p, idx) => {
+                  const cat = categoryData.find(c => c.name === p.category) || {};
+                  const gastado = cat.value || 0;
+                  const diff = p.amount - gastado;
+                  return (
+                    <tr key={idx} className="border-b last:border-0">
+                      <td>{p.category}</td>
+                      <td className="text-right">${p.amount.toLocaleString()}</td>
+                      <td className="text-right">${gastado.toLocaleString()}</td>
+                      <td className={`text-right font-semibold ${diff < 0 ? 'text-red-600' : 'text-green-600'}`}>{diff.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )
+        )}
+      </div>
+
+      {/* Modal de detalle de transacciones */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
+        <div className="fixed inset-0 flex items-center justify-center z-modal bg-black/30 backdrop-blur-sm">
+          <div className="glass-modal p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-bold mb-4">{modalTitle}</h3>
+            {modalTransactions.length === 0 ? (
+              <div className="text-gray-500">No hay transacciones para mostrar.</div>
+            ) : (
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Descripción</th>
+                    <th>Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modalTransactions.map((t, idx) => (
+                    <tr key={idx}>
+                      <td>{t.date ? t.date.slice(0,10) : ''}</td>
+                      <td>{t.description}</td>
+                      <td>${t.amount.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <button className="btn-secondary mt-4 w-full" onClick={() => setModalOpen(false)}>Cerrar</button>
+          </div>
+        </div>
+      </Modal>
+        </>
+      ) : (
+        <AdvancedReports />
+      )}
     </div>
   );
 };

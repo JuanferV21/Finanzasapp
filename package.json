@@ -1,6 +1,22 @@
 {
+  "name": "finanzas-dashboard",
+  "version": "1.0.0",
+  "description": "Dashboard completo de finanzas personales",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev",
+    "build": "cd frontend && npm install && npm run build",
+    "install-all": "cd backend && npm install && cd ../frontend && npm install"
+  },
   "dependencies": {
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
+
+
+

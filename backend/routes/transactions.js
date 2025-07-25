@@ -3,6 +3,8 @@ const { body, validationResult, query } = require('express-validator');
 const Transaction = require('../models/Transaction');
 const { auth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { apiLimiter, uploadLimiter, sensitiveOpLimiter } = require('../middleware/rateLimiter');
+const FileService = require('../services/fileService');
 const path = require('path');
 const fs = require('fs');
 
@@ -349,7 +351,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // PUT /api/transactions/bulk-update - Actualización masiva de transacciones
-router.put('/bulk-update', [
+router.put('/bulk-update', sensitiveOpLimiter, [
   body('transactionIds')
     .isArray({ min: 1 })
     .withMessage('Debe seleccionar al menos una transacción'),
@@ -450,7 +452,7 @@ router.put('/bulk-update', [
 });
 
 // POST /api/transactions/:id/attachments - Subir archivos adjuntos
-router.post('/:id/attachments', auth, upload.array('files', 5), async (req, res) => {
+router.post('/:id/attachments', uploadLimiter, auth, upload.array('files', 5), async (req, res) => {
   try {
     console.log('Intentando adjuntar archivos a transacción:', req.params.id, 'para usuario:', req.user._id)
     const transaction = await Transaction.findOne({
@@ -470,22 +472,27 @@ router.post('/:id/attachments', auth, upload.array('files', 5), async (req, res)
       });
     }
 
-    // Procesar archivos subidos
-    const attachments = req.files.map(file => ({
-      filename: file.filename,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      size: file.size,
-      path: file.path
-    }));
+    // Procesar archivos subidos (local + Cloudinary)
+    const attachments = await FileService.processUploadedFiles(req.files, req.user._id);
 
     // Agregar archivos a la transacción
     transaction.attachments.push(...attachments);
     await transaction.save();
 
+    // Respuesta con URLs optimizadas
+    const attachmentSummary = attachments.map(att => ({
+      filename: att.filename,
+      originalName: att.originalName,
+      mimeType: att.mimeType,
+      size: att.size,
+      url: FileService.getFileUrl(att),
+      cloudBackup: !!att.cloudinary
+    }));
+
     res.json({
       message: `${attachments.length} archivo(s) subido(s) exitosamente`,
-      attachments: attachments
+      attachments: attachmentSummary,
+      cloudBackup: attachments.every(att => att.cloudinary)
     });
 
   } catch (error) {
@@ -520,14 +527,33 @@ router.get('/:id/attachments/:filename', auth, async (req, res) => {
       });
     }
 
+    // Priorizar Cloudinary si está disponible
+    if (attachment.cloudinary && attachment.cloudinary.secure_url) {
+      console.log(`📥 Redirigiendo a Cloudinary: ${attachment.cloudinary.secure_url}`);
+      
+      // Opción 1: Redirección directa (más eficiente)
+      return res.redirect(attachment.cloudinary.secure_url);
+      
+      // Opción 2: Proxy de descarga (descomenta si prefieres esto)
+      // const axios = require('axios');
+      // const response = await axios.get(attachment.cloudinary.secure_url, {
+      //   responseType: 'stream'
+      // });
+      // res.setHeader('Content-Disposition', `attachment; filename="${attachment.originalName}"`);
+      // res.setHeader('Content-Type', attachment.mimeType);
+      // return response.data.pipe(res);
+    }
+
+    // Fallback a archivo local
     const filePath = path.join(__dirname, '../uploads', attachment.filename);
     
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({
-        message: 'Archivo no encontrado en el servidor'
+        message: 'Archivo no encontrado ni en la nube ni localmente'
       });
     }
 
+    console.log(`📥 Descargando archivo local: ${filePath}`);
     res.download(filePath, attachment.originalName);
 
   } catch (error) {
@@ -563,11 +589,14 @@ router.delete('/:id/attachments/:filename', auth, async (req, res) => {
     }
 
     const attachment = transaction.attachments[attachmentIndex];
-    const filePath = path.join(__dirname, '../uploads', attachment.filename);
 
-    // Eliminar archivo del sistema de archivos
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // Eliminar archivo usando FileService (local + Cloudinary)
+    try {
+      await FileService.deleteAttachment(attachment);
+      console.log(`🗑️ Archivo eliminado completamente: ${attachment.filename}`);
+    } catch (error) {
+      console.error('Error eliminando archivo:', error);
+      // Continuar con la eliminación de la referencia aunque falle la eliminación física
     }
 
     // Eliminar referencia de la base de datos
@@ -575,7 +604,8 @@ router.delete('/:id/attachments/:filename', auth, async (req, res) => {
     await transaction.save();
 
     res.json({
-      message: 'Archivo eliminado exitosamente'
+      message: 'Archivo eliminado exitosamente',
+      filename: attachment.filename
     });
 
   } catch (error) {

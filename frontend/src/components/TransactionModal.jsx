@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { transactionService } from '../services/api'
 import { X, Calendar, Paperclip } from 'lucide-react'
 import FileUpload from './FileUpload'
+import CategorySuggestion from './CategorySuggestion'
+import { useCategorization } from '../hooks/useCategorization'
 import { FaFilePdf, FaFileWord, FaFileAlt, FaFileImage, FaFileArchive, FaFile } from 'react-icons/fa';
 
 const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) => {
@@ -20,6 +22,17 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
   const [previewImage, setPreviewImage] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(null);
+  const [showSuggestion, setShowSuggestion] = useState(false);
+  const debounceTimeoutRef = useRef(null);
+  
+  // Hook de categorización
+  const { 
+    suggestions, 
+    loading: suggestionLoading, 
+    suggestCategory, 
+    sendFeedback, 
+    clearSuggestions 
+  } = useCategorization();
 
   const isEditing = !!transaction
 
@@ -44,6 +57,23 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
           date: new Date().toISOString().split('T')[0],
           tags: []
         })
+      }
+      
+      // Limpiar sugerencias cuando se abre el modal
+      clearSuggestions()
+      setShowSuggestion(false)
+      
+      // Limpiar timeout si existe
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+        debounceTimeoutRef.current = null
+      }
+    }
+    
+    // Cleanup cuando se desmonta el componente
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
       }
     }
   }, [isOpen, transaction])
@@ -71,6 +101,35 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
         type: value,
         category: ''
       }))
+      clearSuggestions()
+      setShowSuggestion(false)
+      // Limpiar timeout si existe
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+        debounceTimeoutRef.current = null
+      }
+    }
+    
+    // Si cambia la descripción, sugerir categoría automáticamente
+    if (name === 'description' && !isEditing) {
+      // Limpiar timeout anterior
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+        debounceTimeoutRef.current = null
+      }
+      
+      // Limpiar sugerencias si el texto es muy corto
+      if (value.trim().length <= 3) {
+        clearSuggestions()
+        setShowSuggestion(false)
+      } else {
+        // Crear nuevo timeout
+        debounceTimeoutRef.current = setTimeout(() => {
+          suggestCategory(value, formData.type)
+          setShowSuggestion(true)
+          debounceTimeoutRef.current = null
+        }, 1000) // Debounce de 1 segundo
+      }
     }
     
     if (error) setError('')
@@ -135,17 +194,86 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
     }
   };
 
+  // Funciones de categorización
+  const handleAcceptSuggestion = (category) => {
+    setFormData(prev => ({ ...prev, category }));
+    setShowSuggestion(false);
+    clearSuggestions();
+    
+    // Limpiar timeout si existe
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    
+    // Enviar feedback positivo
+    if (suggestions) {
+      sendFeedback(
+        formData.description,
+        suggestions.category,
+        category,
+        true,
+        suggestions.confidence
+      );
+    }
+  };
+
+  const handleRejectSuggestion = () => {
+    setShowSuggestion(false);
+    clearSuggestions();
+    
+    // Limpiar timeout si existe
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    
+    // Enviar feedback negativo si hay una categoría seleccionada
+    if (suggestions && formData.category) {
+      sendFeedback(
+        formData.description,
+        suggestions.category,
+        formData.category,
+        false,
+        suggestions.confidence
+      );
+    }
+  };
+
+  const handleSelectAlternative = (category) => {
+    setFormData(prev => ({ ...prev, category }));
+    setShowSuggestion(false);
+    clearSuggestions();
+    
+    // Limpiar timeout si existe
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    
+    // Enviar feedback sobre alternativa seleccionada
+    if (suggestions) {
+      sendFeedback(
+        formData.description,
+        suggestions.category,
+        category,
+        false,
+        suggestions.confidence
+      );
+    }
+  };
+
   if (!isOpen) return null
 
   return (
     <>
-      <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="fixed inset-0 z-modal overflow-y-auto">
         <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
           {/* Overlay */}
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose}></div>
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
           {/* Modal */}
-          <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-            <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+          <div className="inline-block align-bottom glass-modal text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div className="px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
                   {isEditing ? 'Editar Transacción' : 'Nueva Transacción'}
@@ -258,6 +386,19 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
                     placeholder="Descripción de la transacción"
                     maxLength={200}
                   />
+                  
+                  {/* Sugerencia de categoría */}
+                  {!isEditing && formData.description.trim().length > 3 && (suggestionLoading || (showSuggestion && suggestions)) && (
+                    <div className="mt-3">
+                      <CategorySuggestion
+                        suggestion={suggestions}
+                        loading={suggestionLoading}
+                        onAccept={handleAcceptSuggestion}
+                        onReject={handleRejectSuggestion}
+                        onSelectAlternative={handleSelectAlternative}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Fecha */}
@@ -391,7 +532,7 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
       </div>
       {/* Modal de previsualización de imagen */}
       {previewImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70" onClick={() => { URL.revokeObjectURL(previewImage); setPreviewImage(null); }}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black bg-opacity-70" onClick={() => { URL.revokeObjectURL(previewImage); setPreviewImage(null); }}>
           <img
             src={previewImage}
             alt="Vista previa"

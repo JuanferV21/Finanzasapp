@@ -71,7 +71,15 @@ const transactionSchema = new mongoose.Schema({
     },
     path: {
       type: String,
-      required: true
+      required: true // Path local (fallback)
+    },
+    // Campos de Cloudinary
+    cloudinary: {
+      public_id: String,
+      secure_url: String,
+      url: String,
+      resource_type: String,
+      format: String
     },
     uploadedAt: {
       type: Date,
