@@ -59,8 +59,8 @@ export const transactionService = {
 // Servicios de estadísticas (modo demo)
 export const statsService = {
   getSummary: (params) => demoAPI.getStats().then(data => ({ data })),
-  getCategories: (params) => Promise.resolve({ data: [] }),
-  getMonthly: (params) => Promise.resolve({ data: [] }),
+  getCategories: (params) => demoAPI.getCategoryStats().then(data => ({ data })),
+  getMonthly: (params) => demoAPI.getMonthlyStats().then(data => ({ data })),
   getTrends: () => Promise.resolve({ data: [] }),
 }
 

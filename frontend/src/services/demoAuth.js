@@ -102,5 +102,54 @@ export const demoAPI = {
       balance: income - expenses,
       transactionCount: transactions.length
     };
+  },
+
+  // Obtener estadísticas por categoría
+  async getCategoryStats() {
+    await delay(300);
+    const transactions = await this.getTransactions();
+    
+    const categoryTotals = {};
+    transactions.forEach(t => {
+      if (!categoryTotals[t.category]) {
+        categoryTotals[t.category] = { income: 0, expense: 0 };
+      }
+      categoryTotals[t.category][t.type] += t.amount;
+    });
+
+    const categoryData = Object.entries(categoryTotals).map(([category, data]) => ({
+      category,
+      ...data,
+      total: data.income + data.expense
+    }));
+
+    return {
+      categoryData,
+      topCategories: categoryData.sort((a, b) => b.total - a.total).slice(0, 5)
+    };
+  },
+
+  // Obtener datos mensuales
+  async getMonthlyStats() {
+    await delay(300);
+    
+    return {
+      monthlyData: [
+        {
+          month: '2024-06',
+          income: 3200,
+          expense: 1850,
+          balance: 1350,
+          transactions: 15
+        },
+        {
+          month: '2024-07',
+          income: 4000,
+          expense: 1900,
+          balance: 2100,
+          transactions: 18
+        }
+      ]
+    };
   }
 };

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { statsService } from '../services/api'
+import { statsService, budgetService } from '../services/api'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { 
@@ -106,7 +106,7 @@ const Dashboard = () => {
   // Cargar presupuestos del mes actual
   const loadBudgets = async (month = budgetMonth) => {
     try {
-      const res = await statsService.getBudgets({ month });
+      const res = await budgetService.getAll({ month });
       setBudgets(res.data);
     } catch (err) {
       setBudgets([]);
