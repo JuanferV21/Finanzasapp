@@ -21,33 +21,29 @@ const storage = multer.diskStorage({
   }
 });
 
-// Filtro de archivos permitidos
+// Filtro de archivos permitidos (endurecido)
 const fileFilter = (req, file, cb) => {
-  // Tipos de archivo permitidos
-  const allowedTypes = [
-    'image/jpeg',
-    'image/jpg',
-    'image/png',
-    'image/gif',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/plain'
-  ];
+  // Aceptar solo imágenes y PDF (reduce superficie de ataque)
+  const allowedImages = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+  const isImage = file.mimetype && allowedImages.includes(file.mimetype);
+  const isPdf = file.mimetype === 'application/pdf';
 
-  if (allowedTypes.includes(file.mimetype)) {
+  if (isImage || isPdf) {
     cb(null, true);
   } else {
-    cb(new Error('Tipo de archivo no permitido. Solo se permiten imágenes, PDFs, documentos de Word y archivos de texto.'), false);
+    cb(new Error('Tipo de archivo no permitido. Solo se permiten imágenes y archivos PDF.'), false);
   }
 };
+
+// Configuración de límites por entorno
+const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB || '5', 10);
 
 // Configuración de multer
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB máximo
+    fileSize: MAX_UPLOAD_MB * 1024 * 1024, // Máximo por archivo
     files: 5 // Máximo 5 archivos por transacción
   }
 });

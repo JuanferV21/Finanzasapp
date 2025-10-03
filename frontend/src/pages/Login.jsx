@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Eye, EyeOff, Mail, Lock, DollarSign, TrendingUp, Shield, Zap } from 'lucide-react'
@@ -14,6 +14,17 @@ const Login = () => {
   
   const { login } = useAuth()
   const navigate = useNavigate()
+
+  // Mostrar mensaje si venimos de sesión expirada y limpiar
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem('auth_error')
+      if (msg) {
+        setError(msg)
+        sessionStorage.removeItem('auth_error')
+      }
+    } catch (_) {}
+  }, [])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -33,7 +44,16 @@ const Login = () => {
     const result = await login(formData.email, formData.password)
     
     if (result.success) {
-      navigate('/dashboard')
+      // Redirigir a la ruta previa si existe
+      let next = '/dashboard'
+      try {
+        const storedNext = sessionStorage.getItem('next')
+        if (storedNext && typeof storedNext === 'string' && storedNext.startsWith('/')) {
+          next = storedNext
+        }
+        sessionStorage.removeItem('next')
+      } catch (_) {}
+      navigate(next)
     } else {
       setError(result.message)
     }
@@ -129,6 +149,15 @@ const Login = () => {
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div className="flex items-center justify-end">
+              <Link
+                to="/forgot-password"
+                className="text-sm text-blue-600 hover:text-blue-500 transition-colors duration-200 font-medium"
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
             </div>
 
             <button

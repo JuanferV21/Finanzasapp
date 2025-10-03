@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { statsService, transactionService, budgetService } from '../services/api';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Modal } from '@mui/material'; // Usar un modal simple, puedes cambiarlo por otro si prefieres
+// Reemplazar Modal MUI por modal de estilo "glass" coherente con la app
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -50,6 +50,17 @@ const Reports = () => {
   // Restaurar la cabecera original:
   const reportRef = useRef(null);
 
+  // Agregar soporte para tecla ESC en el modal
+  useEffect(() => {
+    const handleEscKey = (e) => {
+      if (e.key === 'Escape' && modalOpen) {
+        setModalOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [modalOpen]);
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -94,7 +105,15 @@ const Reports = () => {
           monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         }
         const budgetsRes = await budgetService.getAll({ month: monthStr });
-        setBudgets(budgetsRes.data || []);
+        // La API puede devolver budgets directamente o dentro de .data
+        const budgetsArray = Array.isArray(budgetsRes.data) ? budgetsRes.data : (Array.isArray(budgetsRes) ? budgetsRes : []);
+        console.log('Presupuestos recibidos:', budgetsArray);
+        setBudgets(budgetsArray);
+
+        // Además, cargar categorías completas para poder mapear códigos->labels si es necesario
+        const allCats = await statsService.getCategories({ type: 'expense' });
+        const expenseCats = allCats.data.expense?.categories || [];
+        setCategoryData(prev => prev.length ? prev : expenseCats);
       } catch (err) {
         setError(err?.response?.data?.message || err.message || 'Error cargando los reportes');
       } finally {
@@ -191,19 +210,27 @@ const Reports = () => {
 
   // Exportar a PDF
   const handleExportPDF = async () => {
+    if (!reportRef.current) {
+      console.error('reportRef no está disponible');
+      return;
+    }
     setExportingPDF(true);
-    if (!reportRef.current) return;
-    const canvas = await html2canvas(reportRef.current, { scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    // Ajustar imagen al ancho de la página
-    const imgWidth = pageWidth - 40;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    pdf.addImage(imgData, 'PNG', 20, 20, imgWidth, imgHeight);
-    pdf.save(`reportes_finanzas_${new Date().toISOString().slice(0,10)}.pdf`);
-    setExportingPDF(false);
+    try {
+      const canvas = await html2canvas(reportRef.current, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      // Ajustar imagen al ancho de la página
+      const imgWidth = pageWidth - 40;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 20, 20, imgWidth, imgHeight);
+      pdf.save(`reportes_finanzas_${new Date().toISOString().slice(0,10)}.pdf`);
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+    } finally {
+      setExportingPDF(false);
+    }
   };
 
   // Función para mostrar detalle de transacciones por categoría
@@ -256,9 +283,26 @@ const Reports = () => {
     return null;
   };
 
-  // Skeleton loader
-  const Skeleton = ({ height = 32, width = '100%' }) => (
-    <div style={{ height, width }} className="bg-gray-200 animate-pulse rounded mb-2" />
+  // Skeleton loader profesional
+  const Skeleton = ({ height = 32, width = '100%', className = '' }) => (
+    <div
+      style={{ height, width }}
+      className={`bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 bg-[length:200%_100%] animate-shimmer rounded ${className}`}
+    />
+  );
+
+  const ChartSkeleton = () => (
+    <div className="space-y-3 animate-pulse">
+      <div className="flex justify-between items-center">
+        <Skeleton height={24} width="40%" />
+        <Skeleton height={20} width="20%" />
+      </div>
+      <Skeleton height={280} width="100%" />
+      <div className="flex justify-center gap-4">
+        <Skeleton height={16} width={80} />
+        <Skeleton height={16} width={80} />
+      </div>
+    </div>
   );
 
   return (
@@ -286,25 +330,27 @@ const Reports = () => {
       />
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="glass-card p-1 flex gap-1">
         <button
           onClick={() => setActiveTab('standard')}
-          className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+          className={`flex-1 px-6 py-3 font-medium text-sm rounded-lg transition-all duration-200 flex items-center justify-center gap-2 ${
             activeTab === 'standard'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
+              ? 'bg-blue-500 text-white shadow-md'
+              : 'bg-transparent text-gray-600 hover:bg-gray-100'
           }`}
         >
+          <BarChart3 className="h-4 w-4" />
           Reportes Estándar
         </button>
         <button
           onClick={() => setActiveTab('advanced')}
-          className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+          className={`flex-1 px-6 py-3 font-medium text-sm rounded-lg transition-all duration-200 flex items-center justify-center gap-2 ${
             activeTab === 'advanced'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
+              ? 'bg-blue-500 text-white shadow-md'
+              : 'bg-transparent text-gray-600 hover:bg-gray-100'
           }`}
         >
+          <FileText className="h-4 w-4" />
           Reportes Avanzados
         </button>
       </div>
@@ -313,23 +359,92 @@ const Reports = () => {
       {activeTab === 'standard' ? (
         <>
           {/* Filtros rápidos */}
-          <div className="flex flex-wrap gap-2 mb-2">
-            <button className="btn-secondary text-xs" onClick={() => setQuickFilter('month')}>Este mes</button>
-            <button className="btn-secondary text-xs" onClick={() => setQuickFilter('lastMonth')}>Mes anterior</button>
-            <button className="btn-secondary text-xs" onClick={() => setQuickFilter('year')}>Este año</button>
-            <button className="btn-secondary text-xs" onClick={() => setQuickFilter('all')}>Todo</button>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button
+              className="btn-secondary text-xs flex items-center gap-1.5"
+              onClick={() => setQuickFilter('month')}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Este mes</span>
+              <span className="sm:hidden">Mes</span>
+            </button>
+            <button
+              className="btn-secondary text-xs flex items-center gap-1.5"
+              onClick={() => setQuickFilter('lastMonth')}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Mes anterior</span>
+              <span className="sm:hidden">Anterior</span>
+            </button>
+            <button
+              className="btn-secondary text-xs flex items-center gap-1.5"
+              onClick={() => setQuickFilter('year')}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Este año</span>
+              <span className="sm:hidden">Año</span>
+            </button>
+            <button
+              className="btn-secondary text-xs flex items-center gap-1.5"
+              onClick={() => setQuickFilter('all')}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              <span>Todo</span>
+            </button>
           </div>
+
+          {/* Tarjetas de resumen */}
+          {!loading && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <div className="glass-card bg-gradient-to-br from-green-50/80 to-emerald-100/80 border-green-200">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-gray-600">Total Ingresos</p>
+                  <TrendingUp className="h-5 w-5 text-green-600" />
+                </div>
+                <p className="text-2xl font-bold text-green-700">${summary.totalIncome.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">Período seleccionado</p>
+              </div>
+
+              <div className="glass-card bg-gradient-to-br from-red-50/80 to-rose-100/80 border-red-200">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-gray-600">Total Gastos</p>
+                  <TrendingDown className="h-5 w-5 text-red-600" />
+                </div>
+                <p className="text-2xl font-bold text-red-700">${summary.totalExpense.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">Período seleccionado</p>
+              </div>
+
+              <div className={`glass-card bg-gradient-to-br ${summary.totalIncome - summary.totalExpense >= 0 ? 'from-blue-50/80 to-indigo-100/80 border-blue-200' : 'from-orange-50/80 to-amber-100/80 border-orange-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-gray-600">Balance</p>
+                  <DollarSign className={`h-5 w-5 ${summary.totalIncome - summary.totalExpense >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
+                </div>
+                <p className={`text-2xl font-bold ${summary.totalIncome - summary.totalExpense >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
+                  ${(summary.totalIncome - summary.totalExpense).toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {summary.totalIncome - summary.totalExpense >= 0 ? 'Superávit' : 'Déficit'}
+                </p>
+              </div>
+            </div>
+          )}
 
       {/* Gráficas y tablas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6" ref={reportRef}>
         {/* Gráfica de pastel ingresos vs gastos */}
         <div className="glass-card w-full max-w-full min-w-0 flex flex-col items-center justify-center">
           <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><PieChartIcon className="h-5 w-5" /> Ingresos vs Gastos</h2>
-          {loading ? <Skeleton height={200} /> : (
+          {loading ? <ChartSkeleton /> : (
             summaryData.every(d => d.value === 0) ? (
-              <div className="text-gray-500 text-center py-8">No hay datos suficientes para mostrar la gráfica de ingresos vs gastos.</div>
+              <div className="text-center py-12">
+                <div className="mx-auto w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                  <PieChartIcon className="h-8 w-8 text-gray-400" />
+                </div>
+                <p className="text-gray-600 font-medium mb-1">Sin datos financieros</p>
+                <p className="text-sm text-gray-500">Agrega transacciones para ver tus ingresos vs gastos</p>
+              </div>
             ) : (
-              <ResponsiveContainer width="100%" height={220} minWidth={220}>
+              <ResponsiveContainer width="100%" height={280} minWidth={220}>
                 <PieChart>
                   <Pie
                     data={summaryData}
@@ -337,7 +452,7 @@ const Reports = () => {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={70}
+                    outerRadius="60%"
                     label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                   >
                     {summaryData.map((entry, idx) => (
@@ -358,15 +473,21 @@ const Reports = () => {
         {/* Gráfica de barras de gastos por categoría */}
         <div className="glass-card w-full max-w-full min-w-0 overflow-x-auto">
           <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Gastos por Categoría</h2>
-          {loading ? <Skeleton height={200} /> : (
+          {loading ? <ChartSkeleton /> : (
             categoryData.length === 0 ? (
-              <div className="text-gray-500 text-center py-8">No hay gastos registrados en este periodo.</div>
+              <div className="text-center py-12">
+                <div className="mx-auto w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                  <BarChart3 className="h-8 w-8 text-gray-400" />
+                </div>
+                <p className="text-gray-600 font-medium mb-1">Sin gastos por categoría</p>
+                <p className="text-sm text-gray-500">No hay gastos registrados en este período</p>
+              </div>
             ) : (
-              <ResponsiveContainer width="100%" height={220} minWidth={220}>
-                <BarChart data={categoryData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }} onClick={handleBarClick}>
+              <ResponsiveContainer width="100%" height={280} minWidth={220}>
+                <BarChart data={categoryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} onClick={handleBarClick}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis tickFormatter={v => `$${v}`} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-15} textAnchor="end" height={60} />
+                  <YAxis tickFormatter={v => `$${v}`} tick={{ fontSize: 11 }} />
                   <Tooltip content={<CategoryTooltip />} />
                   <Bar dataKey="value" fill="#3B82F6">
                     {categoryData.map((entry, idx) => (
@@ -383,15 +504,21 @@ const Reports = () => {
       {/* Gráfica de línea de evolución mensual */}
       <div className="glass-card w-full max-w-full min-w-0">
         <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><Activity className="h-5 w-5" /> Evolución Mensual</h2>
-        {loading ? <Skeleton height={200} /> : (
+        {loading ? <ChartSkeleton /> : (
           monthlyData.length === 0 ? (
-            <div className="text-gray-500 text-center py-8">No hay datos suficientes para mostrar la evolución mensual.</div>
+            <div className="text-center py-12">
+              <div className="mx-auto w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                <Activity className="h-8 w-8 text-gray-400" />
+              </div>
+              <p className="text-gray-600 font-medium mb-1">Sin evolución mensual</p>
+              <p className="text-sm text-gray-500">No hay suficientes datos para mostrar tendencias</p>
+            </div>
           ) : (
-            <ResponsiveContainer width="100%" height={220} minWidth={220}>
-              <LineChart data={monthlyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }} onClick={handleLineClick}>
+            <ResponsiveContainer width="100%" height={280} minWidth={220}>
+              <LineChart data={monthlyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} onClick={handleLineClick}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tickFormatter={v => `$${v}`} />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} angle={-15} textAnchor="end" height={60} />
+                <YAxis tickFormatter={v => `$${v}`} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={v => `$${v.toLocaleString()}`} />
                 <Line type="monotone" dataKey="income" stroke="#10B981" name="Ingresos" />
                 <Line type="monotone" dataKey="expense" stroke="#EF4444" name="Gastos" />
@@ -405,9 +532,24 @@ const Reports = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="glass-card w-full max-w-full min-w-0">
           <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><TrendingDown className="h-5 w-5" /> Top 5 Gastos</h2>
-          {loading ? <Skeleton height={120} /> : (
+          {loading ? (
+            <div className="space-y-2 animate-pulse">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex justify-between items-center py-2">
+                  <Skeleton height={16} width="60%" />
+                  <Skeleton height={16} width="25%" />
+                </div>
+              ))}
+            </div>
+          ) : (
             topGastos.length === 0 ? (
-              <div className="text-gray-500 text-center py-8">No hay gastos registrados para mostrar.</div>
+              <div className="text-center py-8">
+                <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                  <TrendingDown className="h-6 w-6 text-red-400" />
+                </div>
+                <p className="text-gray-600 text-sm font-medium mb-1">Sin gastos</p>
+                <p className="text-xs text-gray-500">No hay gastos registrados</p>
+              </div>
             ) : (
               <table className="min-w-full text-sm">
                 <thead><tr><th className="text-left">Descripción</th><th className="text-right">Monto</th></tr></thead>
@@ -425,9 +567,24 @@ const Reports = () => {
         </div>
         <div className="glass-card w-full max-w-full min-w-0">
           <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><TrendingUp className="h-5 w-5" /> Top 5 Ingresos</h2>
-          {loading ? <Skeleton height={120} /> : (
+          {loading ? (
+            <div className="space-y-2 animate-pulse">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex justify-between items-center py-2">
+                  <Skeleton height={16} width="60%" />
+                  <Skeleton height={16} width="25%" />
+                </div>
+              ))}
+            </div>
+          ) : (
             topIngresos.length === 0 ? (
-              <div className="text-gray-500 text-center py-8">No hay ingresos registrados para mostrar.</div>
+              <div className="text-center py-8">
+                <div className="mx-auto w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mb-3">
+                  <TrendingUp className="h-6 w-6 text-green-400" />
+                </div>
+                <p className="text-gray-600 text-sm font-medium mb-1">Sin ingresos</p>
+                <p className="text-xs text-gray-500">No hay ingresos registrados</p>
+              </div>
             ) : (
               <table className="min-w-full text-sm">
                 <thead><tr><th className="text-left">Descripción</th><th className="text-right">Monto</th></tr></thead>
@@ -448,14 +605,41 @@ const Reports = () => {
       {/* Presupuestos vs Realidad */}
       <div className="glass-card w-full max-w-full min-w-0 overflow-x-auto">
         <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2"><Target className="h-5 w-5" /> Presupuestos vs Realidad</h2>
-        {loading ? <Skeleton height={120} /> : (
+        {loading ? (
+          <div className="space-y-2 animate-pulse">
+            <div className="flex justify-between items-center py-2 border-b border-gray-200">
+              <Skeleton height={16} width="20%" />
+              <Skeleton height={16} width="15%" />
+              <Skeleton height={16} width="15%" />
+              <Skeleton height={16} width="15%" />
+            </div>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex justify-between items-center py-2">
+                <Skeleton height={16} width="25%" />
+                <Skeleton height={16} width="18%" />
+                <Skeleton height={16} width="18%" />
+                <Skeleton height={16} width="18%" />
+              </div>
+            ))}
+          </div>
+        ) : (
           budgets.length === 0 ? (
-            <div className="text-gray-500 text-center py-8">No hay presupuestos configurados para este periodo.</div>
+            <div className="text-center py-12">
+              <div className="mx-auto w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                <Target className="h-8 w-8 text-gray-400" />
+              </div>
+              <p className="text-gray-600 font-medium mb-1">Sin presupuestos</p>
+              <p className="text-sm text-gray-500 mb-4">No hay presupuestos configurados para este período</p>
+              <button className="btn-primary text-sm" onClick={() => window.location.href = '/budgets'}>
+                Crear Presupuesto
+              </button>
+            </div>
           ) : (
             <table className="min-w-full text-sm">
               <thead>
                 <tr>
                   <th className="text-left">Categoría</th>
+                  <th className="text-left hidden sm:table-cell">Mes</th>
                   <th className="text-right">Presupuesto</th>
                   <th className="text-right">Gastado</th>
                   <th className="text-right">Diferencia</th>
@@ -463,15 +647,25 @@ const Reports = () => {
               </thead>
               <tbody>
                 {budgets.map((p, idx) => {
-                  const cat = categoryData.find(c => c.name === p.category) || {};
-                  const gastado = cat.value || 0;
+                  // categoryData viene con forma { name: label, value: total }
+                  // budgets tienen category en código (p.ej. 'food'). Intentar localizar por label y por código
+                  const byCode = categoryData.find(c => c.code === p.category);
+                  const byLabel = categoryData.find(c => c.name === p.category);
+                  const gastado = (byCode?.value) || (byLabel?.value) || 0;
                   const diff = p.amount - gastado;
+
+                  // Formatear mes (YYYY-MM -> Mes Año)
+                  const [year, month] = (p.month || '').split('-');
+                  const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                  const monthLabel = month ? `${monthNames[parseInt(month) - 1]} ${year}` : '-';
+
                   return (
                     <tr key={idx} className="border-b last:border-0">
-                      <td>{p.category}</td>
-                      <td className="text-right">${p.amount.toLocaleString()}</td>
-                      <td className="text-right">${gastado.toLocaleString()}</td>
-                      <td className={`text-right font-semibold ${diff < 0 ? 'text-red-600' : 'text-green-600'}`}>{diff.toLocaleString()}</td>
+                      <td className="py-2">{byCode?.name || p.category}</td>
+                      <td className="py-2 text-gray-500 text-xs hidden sm:table-cell">{monthLabel}</td>
+                      <td className="py-2 text-right">${p.amount.toLocaleString()}</td>
+                      <td className="py-2 text-right">${gastado.toLocaleString()}</td>
+                      <td className={`py-2 text-right font-semibold ${diff < 0 ? 'text-red-600' : 'text-green-600'}`}>${diff.toLocaleString()}</td>
                     </tr>
                   );
                 })}
@@ -482,27 +676,36 @@ const Reports = () => {
       </div>
 
       {/* Modal de detalle de transacciones */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
-        <div className="fixed inset-0 flex items-center justify-center z-modal bg-black/30 backdrop-blur-sm">
-          <div className="glass-modal p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-bold mb-4">{modalTitle}</h3>
+      {modalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center z-modal bg-black/30 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false) }}>
+          <div className="glass-modal p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto animate-fade-in mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">{modalTitle}</h3>
+              <button
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
+                onClick={() => setModalOpen(false)}
+                title="Cerrar (ESC)"
+              >
+                ×
+              </button>
+            </div>
             {modalTransactions.length === 0 ? (
               <div className="text-gray-500">No hay transacciones para mostrar.</div>
             ) : (
               <table className="min-w-full text-sm">
                 <thead>
                   <tr>
-                    <th>Fecha</th>
-                    <th>Descripción</th>
-                    <th>Monto</th>
+                    <th className="text-left">Fecha</th>
+                    <th className="text-left">Descripción</th>
+                    <th className="text-right">Monto</th>
                   </tr>
                 </thead>
                 <tbody>
                   {modalTransactions.map((t, idx) => (
-                    <tr key={idx}>
-                      <td>{t.date ? t.date.slice(0,10) : ''}</td>
-                      <td>{t.description}</td>
-                      <td>${t.amount.toLocaleString()}</td>
+                    <tr key={idx} className="border-b last:border-0">
+                      <td className="py-1">{t.date ? t.date.slice(0,10) : ''}</td>
+                      <td className="py-1">{t.description}</td>
+                      <td className="py-1 text-right">${t.amount.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -511,7 +714,7 @@ const Reports = () => {
             <button className="btn-secondary mt-4 w-full" onClick={() => setModalOpen(false)}>Cerrar</button>
           </div>
         </div>
-      </Modal>
+      )}
         </>
       ) : (
         <AdvancedReports />

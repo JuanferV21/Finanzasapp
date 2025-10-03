@@ -1,82 +1,120 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const sequelize = require('../config/database');
 
-const userSchema = new mongoose.Schema({
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
   email: {
-    type: String,
-    required: [true, 'El email es requerido'],
+    type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
-    lowercase: true,
-    trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Por favor ingresa un email válido']
+    validate: {
+      isEmail: {
+        msg: 'Por favor ingresa un email válido'
+      },
+      notEmpty: {
+        msg: 'El email es requerido'
+      }
+    },
+    set(value) {
+      this.setDataValue('email', value.toLowerCase().trim());
+    }
   },
   password: {
-    type: String,
-    required: [true, 'La contraseña es requerida'],
-    minlength: [6, 'La contraseña debe tener al menos 6 caracteres']
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      len: {
+        args: [6, 255],
+        msg: 'La contraseña debe tener al menos 6 caracteres'
+      },
+      notEmpty: {
+        msg: 'La contraseña es requerida'
+      }
+    }
   },
   name: {
-    type: String,
-    required: [true, 'El nombre es requerido'],
-    trim: true,
-    maxlength: [50, 'El nombre no puede tener más de 50 caracteres']
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'El nombre es requerido'
+      },
+      len: {
+        args: [1, 50],
+        msg: 'El nombre no puede tener más de 50 caracteres'
+      }
+    },
+    set(value) {
+      this.setDataValue('name', value.trim());
+    }
   },
   lastLogin: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   },
   preferences: {
-    emailNotifications: {
-      type: Boolean,
-      default: true
-    },
-    pushNotifications: {
-      type: Boolean,
-      default: false
-    },
-    goalReminders: {
-      type: Boolean,
-      default: true
-    },
-    theme: {
-      type: String,
-      enum: ['light', 'dark'],
-      default: 'light'
+    type: DataTypes.JSON,
+    defaultValue: {
+      emailNotifications: true,
+      pushNotifications: false,
+      goalReminders: true,
+      theme: 'light'
     }
+  },
+  passwordResetToken: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  passwordResetExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
-  timestamps: true
-});
-
-// Middleware para encriptar contraseña antes de guardar
-userSchema.pre('save', async function(next) {
-  // Solo encriptar si la contraseña ha sido modificada
-  if (!this.isModified('password')) return next();
-  
-  try {
-    // Encriptar contraseña con salt de 12 rondas
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
+  tableName: 'users',
+  timestamps: true,
+  hooks: {
+    beforeSave: async (user) => {
+      if (user.changed('password')) {
+        const salt = await bcrypt.genSalt(12);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    }
   }
 });
 
-// Método para comparar contraseñas
-userSchema.methods.comparePassword = async function(candidatePassword) {
+// Métodos de instancia
+User.prototype.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// Método para obtener datos públicos del usuario (sin contraseña)
-userSchema.methods.toPublicJSON = function() {
-  const userObject = this.toObject();
+User.prototype.toPublicJSON = function() {
+  const userObject = this.toJSON();
   delete userObject.password;
+  delete userObject.passwordResetToken;
+  delete userObject.passwordResetExpires;
   return userObject;
 };
 
-module.exports = mongoose.model('User', userSchema); 
+User.prototype.createPasswordResetToken = function() {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  
+  // Guardar el token hasheado en la base de datos
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+  
+  // Token expira en 10 minutos
+  this.passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000);
+  
+  // Devolver el token sin hashear para enviarlo por email
+  return resetToken;
+};
+
+module.exports = User; 

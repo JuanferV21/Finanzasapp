@@ -1,9 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { transactionService } from '../services/api'
 import { X, Calendar, Paperclip } from 'lucide-react'
 import FileUpload from './FileUpload'
-import CategorySuggestion from './CategorySuggestion'
-import { useCategorization } from '../hooks/useCategorization'
 import { FaFilePdf, FaFileWord, FaFileAlt, FaFileImage, FaFileArchive, FaFile } from 'react-icons/fa';
 
 const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) => {
@@ -22,17 +20,6 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
   const [previewImage, setPreviewImage] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(null);
-  const [showSuggestion, setShowSuggestion] = useState(false);
-  const debounceTimeoutRef = useRef(null);
-  
-  // Hook de categorización
-  const { 
-    suggestions, 
-    loading: suggestionLoading, 
-    suggestCategory, 
-    sendFeedback, 
-    clearSuggestions 
-  } = useCategorization();
 
   const isEditing = !!transaction
 
@@ -58,23 +45,6 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
           tags: []
         })
       }
-      
-      // Limpiar sugerencias cuando se abre el modal
-      clearSuggestions()
-      setShowSuggestion(false)
-      
-      // Limpiar timeout si existe
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current)
-        debounceTimeoutRef.current = null
-      }
-    }
-    
-    // Cleanup cuando se desmonta el componente
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current)
-      }
     }
   }, [isOpen, transaction])
 
@@ -84,6 +54,28 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
       setCategories(response.data)
     } catch (error) {
       console.error('Error cargando categorías:', error)
+      // En caso de error, usar categorías por defecto
+      setCategories({
+        income: [
+          { value: 'salary', label: 'Salario' },
+          { value: 'freelance', label: 'Freelance' },
+          { value: 'investment', label: 'Inversiones' },
+          { value: 'business', label: 'Negocio' },
+          { value: 'other_income', label: 'Otros Ingresos' }
+        ],
+        expense: [
+          { value: 'food', label: 'Alimentación' },
+          { value: 'transport', label: 'Transporte' },
+          { value: 'entertainment', label: 'Entretenimiento' },
+          { value: 'shopping', label: 'Compras' },
+          { value: 'health', label: 'Salud' },
+          { value: 'education', label: 'Educación' },
+          { value: 'housing', label: 'Vivienda' },
+          { value: 'utilities', label: 'Servicios' },
+          { value: 'insurance', label: 'Seguros' },
+          { value: 'other_expense', label: 'Otros Gastos' }
+        ]
+      })
     }
   }
 
@@ -93,7 +85,7 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
       ...prev,
       [name]: value
     }))
-    
+
     // Si cambia el tipo, resetear categoría
     if (name === 'type') {
       setFormData(prev => ({
@@ -101,37 +93,8 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
         type: value,
         category: ''
       }))
-      clearSuggestions()
-      setShowSuggestion(false)
-      // Limpiar timeout si existe
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current)
-        debounceTimeoutRef.current = null
-      }
     }
-    
-    // Si cambia la descripción, sugerir categoría automáticamente
-    if (name === 'description' && !isEditing) {
-      // Limpiar timeout anterior
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current)
-        debounceTimeoutRef.current = null
-      }
-      
-      // Limpiar sugerencias si el texto es muy corto
-      if (value.trim().length <= 3) {
-        clearSuggestions()
-        setShowSuggestion(false)
-      } else {
-        // Crear nuevo timeout
-        debounceTimeoutRef.current = setTimeout(() => {
-          suggestCategory(value, formData.type)
-          setShowSuggestion(true)
-          debounceTimeoutRef.current = null
-        }, 1000) // Debounce de 1 segundo
-      }
-    }
-    
+
     if (error) setError('')
   }
 
@@ -147,7 +110,7 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
       }
 
       if (isEditing) {
-        await transactionService.update(transaction._id, data)
+        await transactionService.update(transaction.id, data)
       } else {
         await transactionService.create(data)
       }
@@ -191,75 +154,6 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
       alert('No se pudo descargar el archivo.');
     } finally {
       setDownloadLoading(null);
-    }
-  };
-
-  // Funciones de categorización
-  const handleAcceptSuggestion = (category) => {
-    setFormData(prev => ({ ...prev, category }));
-    setShowSuggestion(false);
-    clearSuggestions();
-    
-    // Limpiar timeout si existe
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-      debounceTimeoutRef.current = null;
-    }
-    
-    // Enviar feedback positivo
-    if (suggestions) {
-      sendFeedback(
-        formData.description,
-        suggestions.category,
-        category,
-        true,
-        suggestions.confidence
-      );
-    }
-  };
-
-  const handleRejectSuggestion = () => {
-    setShowSuggestion(false);
-    clearSuggestions();
-    
-    // Limpiar timeout si existe
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-      debounceTimeoutRef.current = null;
-    }
-    
-    // Enviar feedback negativo si hay una categoría seleccionada
-    if (suggestions && formData.category) {
-      sendFeedback(
-        formData.description,
-        suggestions.category,
-        formData.category,
-        false,
-        suggestions.confidence
-      );
-    }
-  };
-
-  const handleSelectAlternative = (category) => {
-    setFormData(prev => ({ ...prev, category }));
-    setShowSuggestion(false);
-    clearSuggestions();
-    
-    // Limpiar timeout si existe
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-      debounceTimeoutRef.current = null;
-    }
-    
-    // Enviar feedback sobre alternativa seleccionada
-    if (suggestions) {
-      sendFeedback(
-        formData.description,
-        suggestions.category,
-        category,
-        false,
-        suggestions.confidence
-      );
     }
   };
 
@@ -386,19 +280,6 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
                     placeholder="Descripción de la transacción"
                     maxLength={200}
                   />
-                  
-                  {/* Sugerencia de categoría */}
-                  {!isEditing && formData.description.trim().length > 3 && (suggestionLoading || (showSuggestion && suggestions)) && (
-                    <div className="mt-3">
-                      <CategorySuggestion
-                        suggestion={suggestions}
-                        loading={suggestionLoading}
-                        onAccept={handleAcceptSuggestion}
-                        onReject={handleRejectSuggestion}
-                        onSelectAlternative={handleSelectAlternative}
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* Fecha */}
@@ -423,7 +304,7 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
                 </div>
 
                 {/* Archivos adjuntos (solo para edición) */}
-                {isEditing && transaction._id ? (
+                {isEditing && transaction.id ? (
                   <div>
                     <button
                       type="button"
@@ -451,7 +332,7 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
                             <div key={idx} className="flex flex-col items-center w-20">
                               {isImage ? (
                                 <button
-                                  onClick={() => handlePreviewImage(transaction._id, att)}
+                                  onClick={() => handlePreviewImage(transaction.id, att)}
                                   className="focus:outline-none"
                                   title={att.originalName}
                                   disabled={previewLoading}
@@ -464,7 +345,7 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => handleDownloadAttachment(transaction._id, att)}
+                                  onClick={() => handleDownloadAttachment(transaction.id, att)}
                                   title={att.originalName}
                                   className="flex items-center justify-center"
                                   disabled={downloadLoading === att.filename}
@@ -485,7 +366,7 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
                                 </button>
                               )}
                               <button
-                                onClick={() => handleDownloadAttachment(transaction._id, att)}
+                                onClick={() => handleDownloadAttachment(transaction.id, att)}
                                 className="text-xs text-primary-600 truncate max-w-[70px]"
                                 title={att.originalName}
                                 disabled={downloadLoading === att.filename}
@@ -498,7 +379,7 @@ const TransactionModal = ({ isOpen, onClose, onSuccess, transaction = null }) =>
                       </div>
                     )}
                   </div>
-                ) : isEditing && !transaction._id ? (
+                ) : isEditing && !transaction.id ? (
                   <div className="mt-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
                     Debes guardar la transacción antes de poder adjuntar archivos.
                   </div>

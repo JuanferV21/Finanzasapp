@@ -1,11 +1,35 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
-const User = require('../models/User');
+const { User } = require('../models');
 const { auth } = require('../middleware/auth');
 const { authLimiter, sensitiveOpLimiter } = require('../middleware/rateLimiter');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const { Op } = require('sequelize');
 
 const router = express.Router();
+
+// Configurar transporter de email
+const createTransporter = () => {
+  if (!process.env.NOTIFY_EMAIL_USER || !process.env.NOTIFY_EMAIL_PASS) {
+    console.warn('⚠️  Variables de email no configuradas. La recuperación de contraseña no funcionará.');
+    return null;
+  }
+  
+  console.log('📧 Configurando transporter de email para:', process.env.NOTIFY_EMAIL_USER);
+  
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.NOTIFY_EMAIL_USER,
+      pass: process.env.NOTIFY_EMAIL_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+};
 
 // Generar token JWT
 const generateToken = (userId) => {
@@ -43,7 +67,7 @@ router.post('/register', authLimiter, [
     const { name, email, password } = req.body;
 
     // Verificar si el usuario ya existe
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ where: { email: email } });
     if (existingUser) {
       return res.status(400).json({
         message: 'Ya existe un usuario con este email'
@@ -51,16 +75,14 @@ router.post('/register', authLimiter, [
     }
 
     // Crear nuevo usuario
-    const user = new User({
+    const user = await User.create({
       name,
       email,
       password
     });
 
-    await user.save();
-
     // Generar token
-    const token = generateToken(user._id);
+    const token = generateToken(user.id);
 
     res.status(201).json({
       message: 'Usuario registrado exitosamente',
@@ -99,7 +121,7 @@ router.post('/login', authLimiter, [
     const { email, password } = req.body;
 
     // Buscar usuario por email
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ where: { email: email } });
     if (!user) {
       return res.status(401).json({
         message: 'Credenciales inválidas'
@@ -119,7 +141,7 @@ router.post('/login', authLimiter, [
     await user.save();
 
     // Generar token
-    const token = generateToken(user._id);
+    const token = generateToken(user.id);
 
     res.json({
       message: 'Inicio de sesión exitoso',
@@ -193,7 +215,7 @@ router.put('/me', auth, [
     // Verificar si se está actualizando el email
     if (email && email !== req.user.email) {
       // Verificar si el nuevo email ya existe
-      const existingUser = await User.findOne({ email });
+      const existingUser = await User.findOne({ where: { email: email } });
       if (existingUser) {
         return res.status(400).json({
           message: 'Ya existe un usuario con este email'
@@ -207,11 +229,14 @@ router.put('/me', auth, [
     }
 
     // Actualizar usuario
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user._id,
-      updateData,
-      { new: true, runValidators: true }
-    );
+    await User.update(updateData, {
+      where: { id: req.user.id }
+    });
+
+    // Obtener usuario actualizado
+    const updatedUser = await User.findByPk(req.user.id, {
+      attributes: { exclude: ['password', 'passwordResetToken', 'passwordResetExpires'] }
+    });
 
     res.json({
       message: 'Perfil actualizado exitosamente',
@@ -247,7 +272,7 @@ router.post('/change-password', sensitiveOpLimiter, auth, [
     const { currentPassword, newPassword } = req.body;
 
     // Obtener usuario con contraseña para verificar
-    const user = await User.findById(req.user._id);
+    const user = await User.findByPk(req.user.id);
     if (!user) {
       return res.status(404).json({
         message: 'Usuario no encontrado'
@@ -307,35 +332,207 @@ router.put('/preferences', auth, [
     }
 
     const { emailNotifications, pushNotifications, goalReminders, theme } = req.body;
-    const updateData = {};
 
-    if (emailNotifications !== undefined) {
-      updateData['preferences.emailNotifications'] = emailNotifications;
-    }
-    if (pushNotifications !== undefined) {
-      updateData['preferences.pushNotifications'] = pushNotifications;
-    }
-    if (goalReminders !== undefined) {
-      updateData['preferences.goalReminders'] = goalReminders;
-    }
-    if (theme !== undefined) {
-      updateData['preferences.theme'] = theme;
+    // Obtener usuario actual
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        message: 'Usuario no encontrado'
+      });
     }
 
-    // Actualizar usuario
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user._id,
-      updateData,
-      { new: true, runValidators: true }
-    );
+    // Actualizar preferencias
+    const currentPreferences = user.preferences || {};
+    const updatedPreferences = {
+      ...currentPreferences,
+      ...(emailNotifications !== undefined && { emailNotifications }),
+      ...(pushNotifications !== undefined && { pushNotifications }),
+      ...(goalReminders !== undefined && { goalReminders }),
+      ...(theme !== undefined && { theme })
+    };
+
+    user.preferences = updatedPreferences;
+    await user.save();
 
     res.json({
       message: 'Preferencias actualizadas exitosamente',
-      preferences: updatedUser.preferences
+      preferences: user.preferences
     });
 
   } catch (error) {
     console.error('Error actualizando preferencias:', error);
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// POST /api/auth/forgot-password - Solicitar reset de contraseña
+router.post('/forgot-password', authLimiter, [
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Por favor ingresa un email válido')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Email inválido',
+        errors: errors.array()
+      });
+    }
+
+    const { email } = req.body;
+
+    // Buscar usuario por email
+    const user = await User.findOne({ where: { email: email } });
+    
+    // Siempre responder exitosamente para no revelar si el email existe
+    if (!user) {
+      return res.json({
+        message: 'Si el email existe en nuestro sistema, recibirás un enlace de recuperación.'
+      });
+    }
+
+    // Generar token de reset
+    const resetToken = user.createPasswordResetToken();
+    await user.save({ validate: false });
+
+    // Crear transporter de email
+    const transporter = createTransporter();
+    if (!transporter) {
+      return res.status(500).json({
+        message: 'Servicio de email no configurado. Contacta al administrador.'
+      });
+    }
+
+    // Crear URL de reset
+    const resetURL = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}/reset-password/${resetToken}`;
+
+    // Configurar email
+    const mailOptions = {
+      from: process.env.NOTIFY_EMAIL_USER,
+      to: user.email,
+      subject: 'Recuperación de Contraseña - Finanzas Dashboard',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #2563eb;">Recuperación de Contraseña</h2>
+          <p>Hola <strong>${user.name}</strong>,</p>
+          <p>Hemos recibido una solicitud para restablecer tu contraseña. Si no fuiste tú, puedes ignorar este email.</p>
+          <p>Para restablecer tu contraseña, haz clic en el siguiente enlace:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetURL}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Restablecer Contraseña
+            </a>
+          </div>
+          <p><strong>⚠️ Este enlace expira en 10 minutos.</strong></p>
+          <p>Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+          <p style="word-break: break-all; color: #6b7280;">${resetURL}</p>
+          <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+          <p style="color: #6b7280; font-size: 12px;">
+            Si no solicitaste este cambio, tu cuenta sigue siendo segura. Puedes ignorar este email.
+          </p>
+        </div>
+      `
+    };
+
+    // Enviar email
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      console.log('📧 Email enviado exitosamente:', info.messageId);
+      
+      res.json({
+        message: 'Enlace de recuperación enviado a tu email.'
+      });
+    } catch (emailError) {
+      console.error('❌ Error enviando email:', emailError);
+      
+      // Limpiar token en caso de error de email
+      user.passwordResetToken = null;
+      user.passwordResetExpires = null;
+      await user.save({ validate: false });
+      
+      return res.status(500).json({
+        message: 'Error al enviar el email. Verifica la configuración del servidor.'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error en forgot-password:', error);
+    
+    // Limpiar token en caso de error
+    if (req.body.email) {
+      const user = await User.findOne({ where: { email: req.body.email } });
+      if (user) {
+        user.passwordResetToken = null;
+        user.passwordResetExpires = null;
+        await user.save({ validate: false });
+      }
+    }
+    
+    res.status(500).json({
+      message: 'Error interno del servidor'
+    });
+  }
+});
+
+// POST /api/auth/reset-password/:token - Confirmar reset de contraseña
+router.post('/reset-password/:token', authLimiter, [
+  body('password')
+    .isLength({ min: 6 })
+    .withMessage('La nueva contraseña debe tener al menos 6 caracteres')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Contraseña inválida',
+        errors: errors.array()
+      });
+    }
+
+    const { token } = req.params;
+    const { password } = req.body;
+
+    // Hashear el token recibido para comparar con el de la BD
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    // Buscar usuario con token válido y no expirado
+    const user = await User.findOne({
+      where: {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: { [Op.gt]: new Date() }
+      }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: 'Token inválido o expirado'
+      });
+    }
+
+    // Establecer nueva contraseña
+    user.password = password;
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+
+    await user.save();
+
+    // Generar nuevo token JWT
+    const jwtToken = generateToken(user.id);
+
+    res.json({
+      message: 'Contraseña restablecida exitosamente',
+      token: jwtToken,
+      user: user.toPublicJSON()
+    });
+
+  } catch (error) {
+    console.error('Error en reset-password:', error);
     res.status(500).json({
       message: 'Error interno del servidor'
     });

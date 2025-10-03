@@ -1,12 +1,13 @@
 const express = require('express');
 const { body, validationResult, query } = require('express-validator');
-const Transaction = require('../models/Transaction');
+const { Transaction, User } = require('../models');
 const { auth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { apiLimiter, uploadLimiter, sensitiveOpLimiter } = require('../middleware/rateLimiter');
 const FileService = require('../services/fileService');
 const path = require('path');
 const fs = require('fs');
+const { Op } = require('sequelize');
 
 const router = express.Router();
 
@@ -57,52 +58,61 @@ router.get('/', [
       search
     } = req.query;
 
-    // Construir filtros
-    const filters = { user: req.user._id };
+    // Construir filtros para Sequelize
+    const whereClause = { userId: req.user.id };
 
-    if (type) filters.type = type;
-    if (category) filters.category = category;
-    
+    if (type) whereClause.type = type;
+    if (category) whereClause.category = category;
+
     if (startDate || endDate) {
-      filters.date = {};
-      if (startDate) filters.date.$gte = new Date(startDate);
-      if (endDate) filters.date.$lte = new Date(endDate);
+      whereClause.date = {};
+      if (startDate) whereClause.date[Op.gte] = new Date(startDate);
+      if (endDate) whereClause.date[Op.lte] = new Date(endDate);
     }
 
     if (minAmount || maxAmount) {
-      filters.amount = {};
-      if (minAmount) filters.amount.$gte = parseFloat(minAmount);
-      if (maxAmount) filters.amount.$lte = parseFloat(maxAmount);
+      whereClause.amount = {};
+      if (minAmount) whereClause.amount[Op.gte] = parseFloat(minAmount);
+      if (maxAmount) whereClause.amount[Op.lte] = parseFloat(maxAmount);
     }
 
     if (search) {
-      filters.description = { $regex: search, $options: 'i' };
+      whereClause.description = { [Op.like]: `%${search}%` };
     }
 
     // Calcular paginación
-    const skip = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
     // Ejecutar consulta
-    const transactions = await Transaction.find(filters)
-      .sort({ date: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('user', 'name email');
+    const transactions = await Transaction.findAll({
+      where: whereClause,
+      order: [['date', 'DESC'], ['createdAt', 'DESC']],
+      offset: offset,
+      limit: parseInt(limit),
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['name', 'email']
+      }]
+    });
 
-    // Agregar campo 'url' a cada adjunto de cada transacción
+    // Agregar URL de acceso a cada adjunto (prioriza Cloudinary si existe)
     const transactionsWithAttachmentUrls = transactions.map(tx => {
-      const txObj = tx.toObject();
+      const txObj = tx.toJSON();
       if (Array.isArray(txObj.attachments)) {
-        txObj.attachments = txObj.attachments.map(att => ({
-          ...att,
-          url: `/api/transactions/${txObj._id}/attachments/${att.filename}`
-        }));
+        txObj.attachments = txObj.attachments.map(att => {
+          const fileUrl = FileService.getFileUrl(att, txObj.id);
+          return {
+            ...att,
+            url: fileUrl.url
+          };
+        });
       }
       return txObj;
     });
 
     // Contar total de documentos
-    const total = await Transaction.countDocuments(filters);
+    const total = await Transaction.count({ where: whereClause });
 
     res.json({
       transactions: transactionsWithAttachmentUrls,
@@ -201,8 +211,8 @@ router.post('/', [
     }
 
     // Crear transacción
-    const transaction = new Transaction({
-      user: req.user._id,
+    const transaction = await Transaction.create({
+      userId: req.user.id,
       type,
       amount,
       category,
@@ -212,11 +222,6 @@ router.post('/', [
       isRecurring,
       recurringPeriod: isRecurring ? recurringPeriod : null
     });
-
-    await transaction.save();
-
-    // Poblar datos del usuario
-    await transaction.populate('user', 'name email');
 
     res.status(201).json({
       message: 'Transacción creada exitosamente',
@@ -235,9 +240,16 @@ router.post('/', [
 router.get('/:id', async (req, res) => {
   try {
     const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      user: req.user._id
-    }).populate('user', 'name email');
+      where: {
+        id: req.params.id,
+        userId: req.user.id
+      },
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['name', 'email']
+      }]
+    });
 
     if (!transaction) {
       return res.status(404).json({
@@ -291,8 +303,10 @@ router.put('/:id', [
     }
 
     const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      user: req.user._id
+      where: {
+        id: req.params.id,
+        userId: req.user.id
+      }
     });
 
     if (!transaction) {
@@ -309,7 +323,15 @@ router.put('/:id', [
     });
 
     await transaction.save();
-    await transaction.populate('user', 'name email');
+
+    // Recargar con relaciones
+    await transaction.reload({
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['name', 'email']
+      }]
+    });
 
     res.json({
       message: 'Transacción actualizada exitosamente',
@@ -327,9 +349,11 @@ router.put('/:id', [
 // DELETE /api/transactions/:id - Eliminar transacción
 router.delete('/:id', async (req, res) => {
   try {
-    const transaction = await Transaction.findOneAndDelete({
-      _id: req.params.id,
-      user: req.user._id
+    const transaction = await Transaction.findOne({
+      where: {
+        id: req.params.id,
+        userId: req.user.id
+      }
     });
 
     if (!transaction) {
@@ -337,6 +361,8 @@ router.delete('/:id', async (req, res) => {
         message: 'Transacción no encontrada'
       });
     }
+
+    await transaction.destroy();
 
     res.json({
       message: 'Transacción eliminada exitosamente'
@@ -385,9 +411,11 @@ router.put('/bulk-update', sensitiveOpLimiter, [
     const { transactionIds, action, type, category, tags } = req.body;
 
     // Verificar que todas las transacciones pertenezcan al usuario
-    const transactions = await Transaction.find({
-      _id: { $in: transactionIds },
-      user: req.user._id
+    const transactions = await Transaction.findAll({
+      where: {
+        id: { [Op.in]: transactionIds },
+        userId: req.user.id
+      }
     });
 
     if (transactions.length !== transactionIds.length) {
@@ -404,7 +432,7 @@ router.put('/bulk-update', sensitiveOpLimiter, [
         const categories = Transaction.getCategories();
         const validCategories = categories[type] || [];
         const isValidCategory = validCategories.some(cat => cat.value === category);
-        
+
         if (!isValidCategory) {
           return res.status(400).json({
             message: 'Categoría inválida para el tipo de transacción'
@@ -419,7 +447,7 @@ router.put('/bulk-update', sensitiveOpLimiter, [
     if (action === 'add_tags' && tags) {
       // Parsear tags y agregarlos a las transacciones existentes
       const newTags = tags.split(',').map(tag => tag.trim()).filter(tag => tag);
-      
+
       // Actualizar cada transacción agregando los nuevos tags
       for (const transaction of transactions) {
         const existingTags = transaction.tags || [];
@@ -434,13 +462,18 @@ router.put('/bulk-update', sensitiveOpLimiter, [
     }
 
     // Actualizar transacciones con los nuevos datos
-    const result = await Transaction.updateMany(
-      { _id: { $in: transactionIds }, user: req.user._id },
-      updateData
+    const [updatedCount] = await Transaction.update(
+      updateData,
+      {
+        where: {
+          id: { [Op.in]: transactionIds },
+          userId: req.user.id
+        }
+      }
     );
 
     res.json({
-      message: `${result.modifiedCount} transacción(es) actualizada(s) exitosamente`
+      message: `${updatedCount} transacción(es) actualizada(s) exitosamente`
     });
 
   } catch (error) {
@@ -454,10 +487,12 @@ router.put('/bulk-update', sensitiveOpLimiter, [
 // POST /api/transactions/:id/attachments - Subir archivos adjuntos
 router.post('/:id/attachments', uploadLimiter, auth, upload.array('files', 5), async (req, res) => {
   try {
-    console.log('Intentando adjuntar archivos a transacción:', req.params.id, 'para usuario:', req.user._id)
+    console.log('Intentando adjuntar archivos a transacción:', req.params.id, 'para usuario:', req.user.id)
     const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      user: req.user._id
+      where: {
+        id: req.params.id,
+        userId: req.user.id
+      }
     });
     console.log('Resultado de búsqueda de transacción:', transaction)
     if (!transaction) {
@@ -472,8 +507,18 @@ router.post('/:id/attachments', uploadLimiter, auth, upload.array('files', 5), a
       });
     }
 
-    // Procesar archivos subidos (local + Cloudinary)
-    const attachments = await FileService.processUploadedFiles(req.files, req.user._id);
+    // Validar archivos (extensión, MIME y firma real)
+    const { validFiles, invalid } = await FileService.validateUploadedFiles(req.files);
+
+    if (validFiles.length === 0) {
+      return res.status(400).json({
+        message: 'Todos los archivos fueron rechazados',
+        errors: invalid
+      });
+    }
+
+    // Procesar archivos válidos (local + Cloudinary)
+    const attachments = await FileService.processUploadedFiles(validFiles, req.user._id);
 
     // Agregar archivos a la transacción
     transaction.attachments.push(...attachments);
@@ -485,14 +530,15 @@ router.post('/:id/attachments', uploadLimiter, auth, upload.array('files', 5), a
       originalName: att.originalName,
       mimeType: att.mimeType,
       size: att.size,
-      url: FileService.getFileUrl(att),
+      url: FileService.getFileUrl(att, req.params.id),
       cloudBackup: !!att.cloudinary
     }));
 
     res.json({
-      message: `${attachments.length} archivo(s) subido(s) exitosamente`,
+      message: `${attachments.length} archivo(s) subido(s) exitosamente` + (invalid.length ? `, ${invalid.length} rechazado(s)` : ''),
       attachments: attachmentSummary,
-      cloudBackup: attachments.every(att => att.cloudinary)
+      cloudBackup: attachments.every(att => att.cloudinary),
+      rejected: invalid.length ? invalid : undefined
     });
 
   } catch (error) {
@@ -507,8 +553,10 @@ router.post('/:id/attachments', uploadLimiter, auth, upload.array('files', 5), a
 router.get('/:id/attachments/:filename', auth, async (req, res) => {
   try {
     const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      user: req.user._id
+      where: {
+        id: req.params.id,
+        userId: req.user.id
+      }
     });
 
     if (!transaction) {
@@ -568,8 +616,10 @@ router.get('/:id/attachments/:filename', auth, async (req, res) => {
 router.delete('/:id/attachments/:filename', auth, async (req, res) => {
   try {
     const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      user: req.user._id
+      where: {
+        id: req.params.id,
+        userId: req.user.id
+      }
     });
 
     if (!transaction) {
@@ -635,21 +685,27 @@ router.get('/export', auth, [
     const { startDate, endDate, type, category } = req.query;
 
     // Construir filtros
-    const filters = { user: req.user._id };
+    const whereClause = { userId: req.user.id };
 
-    if (type) filters.type = type;
-    if (category) filters.category = category;
-    
+    if (type) whereClause.type = type;
+    if (category) whereClause.category = category;
+
     if (startDate || endDate) {
-      filters.date = {};
-      if (startDate) filters.date.$gte = new Date(startDate);
-      if (endDate) filters.date.$lte = new Date(endDate);
+      whereClause.date = {};
+      if (startDate) whereClause.date[Op.gte] = new Date(startDate);
+      if (endDate) whereClause.date[Op.lte] = new Date(endDate);
     }
 
     // Obtener transacciones
-    const transactions = await Transaction.find(filters)
-      .sort({ date: -1, createdAt: -1 })
-      .populate('user', 'name email');
+    const transactions = await Transaction.findAll({
+      where: whereClause,
+      order: [['date', 'DESC'], ['createdAt', 'DESC']],
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['name', 'email']
+      }]
+    });
 
     // Generar CSV
     const csvHeaders = [

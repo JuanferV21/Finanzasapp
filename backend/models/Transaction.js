@@ -1,112 +1,132 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
 
-const transactionSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'El usuario es requerido']
+const Transaction = sequelize.define('Transaction', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    validate: {
+      notEmpty: {
+        msg: 'El usuario es requerido'
+      }
+    }
   },
   type: {
-    type: String,
-    enum: ['income', 'expense'],
-    required: [true, 'El tipo de transacción es requerido']
+    type: DataTypes.ENUM('income', 'expense'),
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'El tipo de transacción es requerido'
+      }
+    }
   },
   amount: {
-    type: Number,
-    required: [true, 'El monto es requerido'],
-    min: [0.01, 'El monto debe ser mayor a 0']
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    validate: {
+      min: {
+        args: [0.01],
+        msg: 'El monto debe ser mayor a 0'
+      },
+      notEmpty: {
+        msg: 'El monto es requerido'
+      }
+    }
   },
   category: {
-    type: String,
-    required: [true, 'La categoría es requerida'],
-    enum: [
-      // Ingresos
+    type: DataTypes.ENUM(
       'salary', 'freelance', 'investment', 'business', 'other_income',
-      // Gastos
       'food', 'transport', 'entertainment', 'shopping', 'health', 
       'education', 'housing', 'utilities', 'insurance', 'other_expense'
-    ]
+    ),
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'La categoría es requerida'
+      }
+    }
   },
   description: {
-    type: String,
-    required: [true, 'La descripción es requerida'],
-    trim: true,
-    maxlength: [200, 'La descripción no puede tener más de 200 caracteres']
+    type: DataTypes.STRING(200),
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'La descripción es requerida'
+      },
+      len: {
+        args: [1, 200],
+        msg: 'La descripción no puede tener más de 200 caracteres'
+      }
+    },
+    set(value) {
+      this.setDataValue('description', value.trim());
+    }
   },
   date: {
-    type: Date,
-    required: [true, 'La fecha es requerida'],
-    default: Date.now
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW,
+    validate: {
+      notEmpty: {
+        msg: 'La fecha es requerida'
+      }
+    }
   },
-  tags: [{
-    type: String,
-    trim: true,
-    maxlength: 20
-  }],
+  tags: {
+    type: DataTypes.JSON,
+    defaultValue: []
+  },
   isRecurring: {
-    type: Boolean,
-    default: false
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
   recurringPeriod: {
-    type: String,
-    enum: ['weekly', 'monthly', 'yearly', null],
-    default: null
+    type: DataTypes.ENUM('weekly', 'monthly', 'yearly'),
+    allowNull: true
   },
-  attachments: [{
-    filename: {
-      type: String,
-      required: true
-    },
-    originalName: {
-      type: String,
-      required: true
-    },
-    mimeType: {
-      type: String,
-      required: true
-    },
-    size: {
-      type: Number,
-      required: true
-    },
-    path: {
-      type: String,
-      required: true // Path local (fallback)
-    },
-    // Campos de Cloudinary
-    cloudinary: {
-      public_id: String,
-      secure_url: String,
-      url: String,
-      resource_type: String,
-      format: String
-    },
-    uploadedAt: {
-      type: Date,
-      default: Date.now
-    }
-  }]
+  attachments: {
+    type: DataTypes.JSON,
+    defaultValue: []
+  }
 }, {
-  timestamps: true
+  tableName: 'transactions',
+  timestamps: true,
+  indexes: [
+    {
+      fields: ['user_id', 'date'],
+      name: 'idx_user_date'
+    },
+    {
+      fields: ['user_id', 'type'],
+      name: 'idx_user_type'
+    },
+    {
+      fields: ['user_id', 'category'],
+      name: 'idx_user_category'
+    },
+    {
+      fields: ['user_id', 'date', 'type'],
+      name: 'idx_user_date_type'
+    }
+  ]
 });
-
-// Índices para mejorar performance de consultas
-transactionSchema.index({ user: 1, date: -1 });
-transactionSchema.index({ user: 1, type: 1 });
-transactionSchema.index({ user: 1, category: 1 });
-transactionSchema.index({ user: 1, date: 1, type: 1 });
 
 // Método virtual para obtener el monto con signo
-transactionSchema.virtual('signedAmount').get(function() {
-  return this.type === 'expense' ? -this.amount : this.amount;
-});
-
-// Configurar virtuals para que se incluyan en JSON
-transactionSchema.set('toJSON', { virtuals: true });
-transactionSchema.set('toObject', { virtuals: true });
+Transaction.prototype.getSignedAmount = function() {
+  return this.type === 'expense' ? -parseFloat(this.amount) : parseFloat(this.amount);
+};
 
 // Método estático para obtener categorías disponibles
-transactionSchema.statics.getCategories = function() {
+Transaction.getCategories = function() {
   return {
     income: [
       { value: 'salary', label: 'Salario' },
@@ -131,14 +151,14 @@ transactionSchema.statics.getCategories = function() {
 };
 
 // Método para obtener el label de una categoría
-transactionSchema.methods.getCategoryLabel = function() {
-  const categories = this.constructor.getCategories();
+Transaction.prototype.getCategoryLabel = function() {
+  const categories = Transaction.getCategories();
   const allCategories = [
-    ...(categoryStats.income?.categories || []),
-    ...(categoryStats.expense?.categories || [])
+    ...(categories.income || []),
+    ...(categories.expense || [])
   ];
   const category = allCategories.find(cat => cat.value === this.category);
   return category ? category.label : this.category;
 };
 
-module.exports = mongoose.model('Transaction', transactionSchema); 
+module.exports = Transaction; 

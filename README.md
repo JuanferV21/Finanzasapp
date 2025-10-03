@@ -9,7 +9,10 @@ Una aplicación web completa para gestionar finanzas personales con análisis vi
 - **Resumen Financiero**: Balance neto, totales de ingresos y egresos
 - **Filtros Avanzados**: Por categoría, tipo y fecha
 - **Autenticación JWT**: Sistema de login seguro
-- **Base de Datos Cloud**: MongoDB Atlas
+- **Base de Datos**: MySQL con Sequelize ORM
+- **Metas de Ahorro**: Crea y rastrea tus objetivos financieros
+- **Presupuestos**: Controla gastos por categoría mensualmente
+- **Exportación**: Genera reportes en CSV y PDF
 
 ## 🛠️ Stack Tecnológico
 
@@ -22,10 +25,12 @@ Una aplicación web completa para gestionar finanzas personales con análisis vi
 
 ### Backend
 - Node.js + Express
-- MongoDB Atlas
+- MySQL + Sequelize ORM
 - JWT (autenticación)
 - bcryptjs (encriptación)
-- cors (CORS)
+- cors, helmet (seguridad)
+- Cloudinary (almacenamiento de archivos)
+- Nodemailer (recuperación de contraseña)
 
 ## 📁 Estructura del Proyecto
 
@@ -40,8 +45,8 @@ finanzasdash/
 ## 🚀 Instalación y Configuración
 
 ### Prerrequisitos
-- Node.js 18+ 
-- MongoDB Atlas (cuenta gratuita)
+- Node.js 18+
+- MySQL 8.0+ (o MariaDB 10.5+)
 - Git
 
 ### 1. Clonar y Configurar Backend
@@ -57,16 +62,25 @@ cp .env.example .env
 ```
 
 Configurar variables en `.env`:
-- `MONGODB_URI`: String de conexión de MongoDB Atlas
-- `JWT_SECRET`: Clave secreta para JWT (puede ser cualquier string)
+```env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=tu_password
+DB_NAME=finanzas_dashboard
+JWT_SECRET=your-super-secret-jwt-key
+```
 
-### 2. Configurar MongoDB Atlas
+### 2. Configurar MySQL
 
-1. Crear cuenta en [MongoDB Atlas](https://www.mongodb.com/atlas)
-2. Crear cluster gratuito
-3. Obtener string de conexión
-4. Reemplazar `<password>` con tu contraseña de usuario
-5. Agregar IP 0.0.0.0/0 en Network Access (para desarrollo)
+1. Instalar MySQL 8.0+ o MariaDB 10.5+
+2. Crear base de datos:
+```bash
+mysql -u root -p
+CREATE DATABASE finanzas_dashboard;
+exit;
+```
+3. Las tablas se crearán automáticamente al iniciar el servidor (Sequelize sync)
 
 ### 3. Clonar y Configurar Frontend
 
@@ -82,7 +96,7 @@ npm install
 cd backend
 npm run dev
 ```
-Servidor corriendo en: http://localhost:5000
+Servidor corriendo en: http://localhost:5001
 
 **Frontend:**
 ```bash
@@ -118,11 +132,21 @@ Aplicación corriendo en: http://localhost:5173
 2. Configurar variables de entorno:
    - `VITE_API_URL`: URL del backend desplegado
 
-### Backend (Render)
-1. Conectar repositorio a Render
+### Backend (Railway/Render)
+1. Conectar repositorio a Railway o Render
 2. Configurar variables de entorno:
-   - `MONGODB_URI`: String de conexión MongoDB
+   - `DB_HOST`: Host de la base de datos MySQL
+   - `DB_PORT`: Puerto de MySQL (generalmente 3306)
+   - `DB_USER`: Usuario de MySQL
+   - `DB_PASSWORD`: Contraseña de MySQL
+   - `DB_NAME`: Nombre de la base de datos
    - `JWT_SECRET`: Clave secreta JWT
+   - `CLEANUP_LOCAL_UPLOADS`: `true` en producción para borrar archivos locales tras subirlos a Cloudinary
+   - `CORS_ORIGIN`: Lista de orígenes permitidos (coma-separados). Ej: `https://app.example.com,https://admin.example.com`
+   - `MAX_UPLOAD_MB`: Tamaño máximo por archivo (MB). Ej: `5`
+   - `JSON_BODY_LIMIT`: Límite del body JSON (ej: `1mb`)
+   - `MAX_IMAGE_WIDTH` / `MAX_IMAGE_HEIGHT`: Dimensiones máximas de imagen (px). Opcional
+   - `MAX_IMAGE_PIXELS`: Máximo de megapíxeles permitidos (ancho*alto/1e6). Opcional
 
 ## 📝 API Endpoints
 
@@ -133,6 +157,7 @@ Aplicación corriendo en: http://localhost:5173
 ### Transacciones
 - `GET /api/transactions` - Obtener transacciones
 - `POST /api/transactions` - Crear transacción
+- `POST /api/transactions/:id/attachments` - Subir adjuntos (solo imágenes JPG/PNG/WEBP/GIF o PDF). Se valida firma binaria y, si se configuraron límites, dimensiones máximas; los archivos inválidos son rechazados con detalle.
 - `PUT /api/transactions/:id` - Actualizar transacción
 - `DELETE /api/transactions/:id` - Eliminar transacción
 

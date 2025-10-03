@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult, query } = require('express-validator');
 const { auth } = require('../middleware/auth');
-const { apiLimiter } = require('../middleware/rateLimiter');
+const { apiLimiter, sensitiveOpLimiter } = require('../middleware/rateLimiter');
 const reportService = require('../services/reportService');
 
 const router = express.Router();
@@ -12,6 +12,7 @@ router.use(apiLimiter);
 
 // GET /api/reports/advanced-pdf - Generar PDF avanzado
 router.get('/advanced-pdf', [
+  sensitiveOpLimiter,
   query('startDate')
     .optional()
     .isDate()
@@ -58,7 +59,6 @@ router.get('/advanced-pdf', [
     const filename = `reporte_avanzado_${new Date().toISOString().slice(0, 10)}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Length', pdfDoc.length);
 
     // Stream el PDF
     pdfDoc.pipe(res);
@@ -75,6 +75,7 @@ router.get('/advanced-pdf', [
 
 // GET /api/reports/advanced-excel - Generar Excel avanzado
 router.get('/advanced-excel', [
+  sensitiveOpLimiter,
   query('startDate')
     .optional()
     .isDate()

@@ -1,5 +1,5 @@
 const express = require('express');
-const mongoose = require('mongoose');
+const { sequelize } = require('./models');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -20,31 +20,60 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
+// Helmet con opciones; reforzar HSTS en producción
 app.use(helmet());
+if (process.env.NODE_ENV === 'production') {
+  // Si estás detrás de proxy (Render/Heroku), habilita trust proxy para HSTS
+  app.set('trust proxy', 1);
+  app.use(helmet.hsts({ maxAge: 15552000 })); // 180 días
+  // CSP básica para endurecer contexto del API (afecta principalmente respuestas HTML)
+  app.use(helmet.contentSecurityPolicy({
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'none'"],
+      baseUri: ["'none'"],
+      frameAncestors: ["'none'"],
+    }
+  }));
+}
 app.use(morgan('combined'));
+// CORS con soporte multi-origen (CSV en CORS_ORIGIN)
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Permitir herramientas sin origen (curl/postman) o si está en lista
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('CORS origin not allowed'));
+  },
   credentials: true
 }));
 
 // Rate limiting global para todas las APIs
 app.use('/api', apiLimiter);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Límite de tamaño de body configurable
+const jsonBodyLimit = process.env.JSON_BODY_LIMIT || '1mb';
+app.use(express.json({ limit: jsonBodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: jsonBodyLimit }));
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('✅ Conectado a MongoDB Atlas');
-})
-.catch((error) => {
-  console.error('❌ Error conectando a MongoDB:', error.message);
-  process.exit(1);
-});
+// Test database connection
+sequelize.authenticate()
+  .then(() => {
+    console.log('✅ Conectado a MySQL');
+    // Sync database tables (use force: false in production)
+    return sequelize.sync({ force: false });
+  })
+  .then(() => {
+    console.log('✅ Tablas sincronizadas');
+  })
+  .catch((error) => {
+    console.error('❌ Error conectando a MySQL:', error.message);
+    process.exit(1);
+  });
 
 // Routes
 app.use('/api/auth', authRoutes);

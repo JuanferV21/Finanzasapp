@@ -59,7 +59,13 @@ const Budgets = () => {
       try {
         // Cargar presupuestos del mes
         const res = await budgetService.getAll({ month: selectedMonth });
-        setBudgets(res.data || []);
+        const fetchedBudgets = res.data || [];
+        const normalizedBudgets = fetchedBudgets.map(budget => {
+          const rawAmount = typeof budget.amount === 'number' ? budget.amount : parseFloat(budget.amount);
+          const numericAmount = Number.isFinite(rawAmount) ? rawAmount : 0;
+          return { ...budget, amount: numericAmount };
+        });
+        setBudgets(normalizedBudgets);
         // Cargar categorías de gastos
         const catRes = await statsService.getCategories({ type: 'expense' });
         let cats = catRes.data.expense?.categories || [];
@@ -73,7 +79,13 @@ const Budgets = () => {
         const startDate = `${year}-${month}-01`;
         const endDate = new Date(year, parseInt(month), 0); // último día del mes
         const statsRes = await statsService.getCategories({ type: 'expense', startDate, endDate: endDate.toISOString().slice(0,10) });
-        setSpentByCategory(statsRes.data.expense?.categories || []);
+        const expenseStats = statsRes.data.expense?.categories || [];
+        const normalizedSpent = expenseStats.map(category => {
+          const rawValue = typeof category.value === 'number' ? category.value : parseFloat(category.value);
+          const numericValue = Number.isFinite(rawValue) ? rawValue : 0;
+          return { ...category, value: numericValue };
+        });
+        setSpentByCategory(normalizedSpent);
       } catch (err) {
         setError('Error cargando presupuestos o categorías');
         setBudgets([]);
@@ -95,7 +107,7 @@ const Budgets = () => {
     try {
       setLoading(true);
       await budgetService.delete(id);
-      setBudgets(budgets.filter(b => b._id !== id));
+      setBudgets(budgets.filter(b => b.id !== id));
     } catch (err) {
       setError('Error eliminando presupuesto');
     } finally {
@@ -114,10 +126,12 @@ const Budgets = () => {
     let csv = 'Categoría,Presupuesto,Gastado,Diferencia,Porcentaje\n';
     budgets.forEach(b => {
       const cat = categories.find(c => c.value === b.category);
-      const spent = spentByCategory.find(s => s.name === (cat ? cat.label : b.category))?.value || 0;
-      const diff = b.amount - spent;
-      const percent = b.amount > 0 ? Math.round((spent / b.amount) * 100) : 0;
-      csv += `${cat ? cat.label : b.category},${b.amount},${spent},${diff},${percent}%\n`;
+      const rawSpent = spentByCategory.find(s => s.name === (cat ? cat.label : b.category))?.value ?? 0;
+      const spent = typeof rawSpent === 'number' ? rawSpent : parseFloat(rawSpent) || 0;
+      const amount = b.amount;
+      const diff = amount - spent;
+      const percent = amount > 0 ? Math.round((spent / amount) * 100) : 0;
+      csv += `${cat ? cat.label : b.category},${amount},${spent},${diff},${percent}%\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -148,14 +162,17 @@ const Budgets = () => {
       alert('El monto debe ser un número positivo');
       return;
     }
-    setSavingId(budget._id);
+    setSavingId(budget.id);
     try {
-      await budgetService.create({
-        category: budget.category,
-        type: budget.type,
-        amount: parseFloat(editValue),
-        month: selectedMonth
+      await budgetService.update(budget.id, {
+        amount: parseFloat(editValue)
       });
+      // Actualizar el presupuesto en el estado local
+      setBudgets(budgets.map(b =>
+        b.id === budget.id
+          ? { ...b, amount: parseFloat(editValue) }
+          : b
+      ));
       setEditingId(null);
       setEditValue('');
     } catch (err) {
@@ -220,7 +237,7 @@ const Budgets = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Total gastado</p>
                 <p className="text-2xl font-bold text-green-600">
-                  ${spentByCategory.reduce((sum, cat) => sum + (cat.value || 0), 0).toLocaleString()}
+                  ${spentByCategory.reduce((sum, cat) => sum + cat.value, 0).toLocaleString()}
                 </p>
               </div>
               <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
@@ -233,11 +250,11 @@ const Budgets = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">Restante</p>
                 <p className={`text-2xl font-bold ${
-                  totalBudget - spentByCategory.reduce((sum, cat) => sum + (cat.value || 0), 0) >= 0 
+                  totalBudget - spentByCategory.reduce((sum, cat) => sum + cat.value, 0) >= 0 
                     ? 'text-blue-600' 
                     : 'text-red-600'
                 }`}>
-                  ${(totalBudget - spentByCategory.reduce((sum, cat) => sum + (cat.value || 0), 0)).toLocaleString()}
+                  ${(totalBudget - spentByCategory.reduce((sum, cat) => sum + cat.value, 0)).toLocaleString()}
                 </p>
               </div>
               <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -370,14 +387,16 @@ const Budgets = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {budgets.map((b, idx) => {
                   const cat = categories.find(c => c.value === b.category);
-                  const spent = spentByCategory.find(s => s.name === (cat ? cat.label : b.category))?.value || 0;
-                  const diff = b.amount - spent;
-                  const percent = b.amount > 0 ? Math.round((spent / b.amount) * 100) : 0;
-                  const isExceeded = spent > b.amount;
+                  const rawSpent = spentByCategory.find(s => s.name === (cat ? cat.label : b.category))?.value ?? 0;
+                  const spent = typeof rawSpent === 'number' ? rawSpent : parseFloat(rawSpent) || 0;
+                  const amount = b.amount;
+                  const diff = amount - spent;
+                  const percent = amount > 0 ? Math.round((spent / amount) * 100) : 0;
+                  const isExceeded = spent > amount;
                   const isNearLimit = percent >= 80 && percent < 100;
                   
                   return (
-                    <tr key={b._id || idx} className="hover:bg-gray-50 transition-colors duration-200">
+                    <tr key={b.id || idx} className="hover:bg-gray-50 transition-colors duration-200">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-8 w-8 bg-gray-100 rounded-lg flex items-center justify-center mr-3">
@@ -390,7 +409,7 @@ const Budgets = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {editingId === b._id ? (
+                        {editingId === b.id ? (
                           <div className="flex gap-2 items-center">
                             <input
                               type="number"
@@ -404,10 +423,10 @@ const Budgets = () => {
                             <button
                               className="btn-primary btn-xs hover:shadow-md transition-all duration-200"
                               onClick={() => handleQuickSave(b)}
-                              disabled={savingId === b._id}
+                              disabled={savingId === b.id}
                               title="Guardar cambios"
                             >
-                              {savingId === b._id ? 'Guardando...' : 'Guardar'}
+                              {savingId === b.id ? 'Guardando...' : 'Guardar'}
                             </button>
                             <button 
                               className="btn-secondary btn-xs hover:shadow-md transition-all duration-200" 
@@ -419,10 +438,10 @@ const Budgets = () => {
                           </div>
                         ) : (
                           <div className="flex gap-2 items-center">
-                            <span className="text-sm font-semibold text-gray-900">${b.amount.toLocaleString()}</span>
+                            <span className="text-sm font-semibold text-gray-900">${amount.toLocaleString()}</span>
                             <button 
                               className="btn-secondary btn-xs hover:shadow-md transition-all duration-200" 
-                              onClick={() => { setEditingId(b._id); setEditValue(b.amount); }}
+                              onClick={() => { setEditingId(b.id); setEditValue(String(amount)); }}
                               title="Editar presupuesto"
                             >
                               <Edit className="h-3 w-3" />
@@ -476,7 +495,7 @@ const Budgets = () => {
                             <div className="absolute left-1/2 -translate-x-1/2 -top-10 z-10 hidden group-hover:block bg-white border border-gray-300 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-700 whitespace-nowrap">
                               <div className="font-semibold mb-1">Progreso del presupuesto</div>
                               <div>Gastado: ${spent.toLocaleString()}</div>
-                              <div>Presupuesto: ${b.amount.toLocaleString()}</div>
+                              <div>Presupuesto: ${amount.toLocaleString()}</div>
                               <div className="font-semibold">{percent}% utilizado</div>
                             </div>
                           </div>
@@ -487,7 +506,7 @@ const Budgets = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <button 
                           className="btn-danger hover:shadow-md transition-all duration-200" 
-                          onClick={() => handleDelete(b._id)}
+                          onClick={() => handleDelete(b.id)}
                           title="Eliminar presupuesto"
                         >
                           <Trash2 className="h-4 w-4" />

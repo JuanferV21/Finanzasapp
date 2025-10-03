@@ -103,4 +103,11 @@ Thumbs.db
 .vercel
 
 # Render
-.render-buildlogs 
+.render-buildlogs
+
+# Backend uploads (local files)
+backend/uploads/
+backend/temp/
+
+# Railway
+.railway/ 

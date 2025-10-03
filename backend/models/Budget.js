@@ -1,35 +1,48 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
 
-const budgetSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+const Budget = sequelize.define('Budget', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    }
   },
   category: {
-    type: String,
-    required: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   type: {
-    type: String,
-    enum: ['income', 'expense'],
-    required: true
+    type: DataTypes.ENUM('income', 'expense'),
+    allowNull: false
   },
   amount: {
-    type: Number,
-    required: true,
-    min: 0
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    validate: {
+      min: 0
+    }
   },
   month: {
-    type: String, // formato YYYY-MM
-    required: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.STRING(7), // formato YYYY-MM
+    allowNull: false
   }
+}, {
+  tableName: 'budgets',
+  timestamps: true,
+  indexes: [
+    {
+      unique: true,
+      fields: ['user_id', 'category', 'month']
+    }
+  ]
 });
 
-budgetSchema.index({ user: 1, category: 1, month: 1 }, { unique: true });
-
-module.exports = mongoose.model('Budget', budgetSchema); 
+module.exports = Budget; 

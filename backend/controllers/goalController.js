@@ -1,11 +1,14 @@
-const Goal = require('../models/Goal');
+const { Goal } = require('../models');
 const nodemailer = require('nodemailer');
 const webpush = require('web-push');
 
 // Listar metas del usuario
 exports.getGoals = async (req, res) => {
   try {
-    const goals = await Goal.find({ user: req.user._id }).sort({ createdAt: -1 });
+    const goals = await Goal.findAll({
+      where: { userId: req.user.id },
+      order: [['createdAt', 'DESC']]
+    });
     res.json(goals);
   } catch (err) {
     res.status(500).json({ message: 'Error al obtener metas', error: err.message });
@@ -15,16 +18,15 @@ exports.getGoals = async (req, res) => {
 // Crear meta
 exports.createGoal = async (req, res) => {
   try {
-    const { nombre, montoObjetivo, montoAhorrado, fechaLimite, notas } = req.body;
-    const goal = new Goal({
-      nombre,
-      montoObjetivo,
-      montoAhorrado: montoAhorrado || 0,
-      fechaLimite,
-      notas,
-      user: req.user._id,
+    const { name, targetAmount, savedAmount, deadline, notes } = req.body;
+    const goal = await Goal.create({
+      name,
+      targetAmount,
+      savedAmount: savedAmount || 0,
+      deadline,
+      notes,
+      userId: req.user.id,
     });
-    await goal.save();
     res.status(201).json(goal);
   } catch (err) {
     res.status(400).json({ message: 'Error al crear meta', error: err.message });
@@ -35,12 +37,22 @@ exports.createGoal = async (req, res) => {
 exports.updateGoal = async (req, res) => {
   try {
     const { id } = req.params;
-    const goal = await Goal.findOneAndUpdate(
-      { _id: id, user: req.user._id },
-      req.body,
-      { new: true, runValidators: true }
-    );
-    if (!goal) return res.status(404).json({ message: 'Meta no encontrada' });
+    const goal = await Goal.findOne({
+      where: { id: id, userId: req.user.id }
+    });
+
+    if (!goal) {
+      return res.status(404).json({ message: 'Meta no encontrada' });
+    }
+
+    // Actualizar campos
+    Object.keys(req.body).forEach(key => {
+      if (req.body[key] !== undefined) {
+        goal[key] = req.body[key];
+      }
+    });
+
+    await goal.save();
     res.json(goal);
   } catch (err) {
     res.status(400).json({ message: 'Error al actualizar meta', error: err.message });
@@ -51,8 +63,15 @@ exports.updateGoal = async (req, res) => {
 exports.deleteGoal = async (req, res) => {
   try {
     const { id } = req.params;
-    const goal = await Goal.findOneAndDelete({ _id: id, user: req.user._id });
-    if (!goal) return res.status(404).json({ message: 'Meta no encontrada' });
+    const goal = await Goal.findOne({
+      where: { id: id, userId: req.user.id }
+    });
+
+    if (!goal) {
+      return res.status(404).json({ message: 'Meta no encontrada' });
+    }
+
+    await goal.destroy();
     res.json({ message: 'Meta eliminada' });
   } catch (err) {
     res.status(400).json({ message: 'Error al eliminar meta', error: err.message });
@@ -92,8 +111,8 @@ const pushSubscriptions = {};
 exports.savePushSubscription = async (req, res) => {
   try {
     const { subscription } = req.body;
-    if (!subscription || !req.user?._id) return res.status(400).json({ message: 'Faltan datos de suscripción o usuario.' });
-    pushSubscriptions[req.user._id] = subscription;
+    if (!subscription || !req.user?.id) return res.status(400).json({ message: 'Faltan datos de suscripción o usuario.' });
+    pushSubscriptions[req.user.id] = subscription;
     res.json({ message: 'Suscripción guardada' });
   } catch (err) {
     res.status(500).json({ message: 'Error guardando suscripción', error: err.message });
@@ -120,4 +139,4 @@ exports.sendPushNotification = async (req, res) => {
 
 exports.getVapidPublicKey = (req, res) => {
   res.json({ key: process.env.VAPID_PUBLIC_KEY });
-}; 
+};

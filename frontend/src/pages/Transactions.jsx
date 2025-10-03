@@ -29,6 +29,7 @@ import TransactionFilters from '../components/TransactionFilters'
 import TransactionTable from '../components/TransactionTable'
 import Pagination from '../components/Pagination'
 import PageHeader from '../components/PageHeader';
+import Button from '../components/ui/Button';
 
 const Transactions = () => {
   const [transactions, setTransactions] = useState([])
@@ -39,6 +40,7 @@ const Transactions = () => {
   const [editingTransaction, setEditingTransaction] = useState(null)
   const [selectedTransactions, setSelectedTransactions] = useState([])
   const [selectAll, setSelectAll] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
   const [filters, setFilters] = useState({
     type: '',
     category: '',
@@ -58,6 +60,7 @@ const Transactions = () => {
   const [previewImage, setPreviewImage] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(null); // filename que se está descargando
+  const [exportingCSV, setExportingCSV] = useState(false);
 
   useEffect(() => {
     loadCategories()
@@ -125,7 +128,7 @@ const Transactions = () => {
       setSelectedTransactions([])
       setSelectAll(false)
     } else {
-      setSelectedTransactions(transactions.map(t => t._id))
+      setSelectedTransactions(transactions.map(t => t.id))
       setSelectAll(true)
     }
   }
@@ -149,11 +152,14 @@ const Transactions = () => {
   const handleDelete = async (id) => {
     if (window.confirm('¿Estás seguro de que quieres eliminar esta transacción?')) {
       try {
+        setDeletingId(id)
         await transactionService.delete(id)
         loadTransactions()
       } catch (error) {
         console.error('Error eliminando transacción:', error)
         alert('Error al eliminar la transacción')
+      } finally {
+        setDeletingId(null)
       }
     }
   }
@@ -196,29 +202,57 @@ const Transactions = () => {
     return found ? found.label : category;
   }
 
-  const exportToCSV = () => {
-    const headers = ['Descripción', 'Tipo', 'Categoría', 'Fecha', 'Monto', 'Notas']
-    const csvContent = [
-      headers.join(','),
-      ...transactions.map(t => [
-        `"${t.description}"`,
-        t.type === 'income' ? 'Ingreso' : 'Gasto',
-        `"${getCategoryLabel(t.category)}"`,
-        format(new Date(t.date), 'dd/MM/yyyy', { locale: es }),
-        t.amount,
-        `"${t.notes || ''}"`
-      ].join(','))
-    ].join('\n')
+  // Calcular estadísticas de transacciones actuales
+  const stats = {
+    totalIncome: transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount || 0), 0),
+    totalExpense: transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount || 0), 0),
+    incomeCount: transactions.filter(t => t.type === 'income').length,
+    expenseCount: transactions.filter(t => t.type === 'expense').length,
+  }
+  stats.balance = stats.totalIncome - stats.totalExpense
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
-    link.setAttribute('href', url)
-    link.setAttribute('download', `transacciones_${format(new Date(), 'yyyy-MM-dd')}.csv`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const exportToCSV = async () => {
+    try {
+      setExportingCSV(true)
+      // Obtener TODAS las transacciones con los filtros actuales (sin paginación)
+      const params = { ...filters }
+
+      // Remover filtros vacíos
+      Object.keys(params).forEach(key => {
+        if (!params[key]) delete params[key]
+      })
+
+      const response = await transactionService.getAll(params)
+      const allTransactions = response.data.transactions
+
+      const headers = ['Descripción', 'Tipo', 'Categoría', 'Fecha', 'Monto', 'Notas']
+      const csvContent = [
+        headers.join(','),
+        ...allTransactions.map(t => [
+          `"${t.description}"`,
+          t.type === 'income' ? 'Ingreso' : 'Gasto',
+          `"${getCategoryLabel(t.category)}"`,
+          format(new Date(t.date), 'dd/MM/yyyy', { locale: es }),
+          t.amount,
+          `"${t.notes || ''}"`
+        ].join(','))
+      ].join('\n')
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      link.setAttribute('href', url)
+      link.setAttribute('download', `transacciones_${format(new Date(), 'yyyy-MM-dd')}.csv`)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      console.error('Error exportando CSV:', error)
+      alert('Error al exportar las transacciones')
+    } finally {
+      setExportingCSV(false)
+    }
   }
 
   const setDatePreset = (preset) => {
@@ -315,14 +349,18 @@ const Transactions = () => {
         subtitle="Gestiona tus ingresos y gastos de manera eficiente"
         actions={
           <>
-            <button className="btn-secondary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={exportToCSV}>
-              <Download className="h-4 w-4" />
-              Exportar CSV
-            </button>
-            <button className="btn-primary flex items-center gap-2 w-full sm:w-auto justify-center" onClick={() => setShowTransactionModal(true)}>
-              <Plus className="h-4 w-4" />
+            <Button
+              variant="secondary"
+              onClick={exportToCSV}
+              className="w-full sm:w-auto justify-center"
+              leftIcon={Download}
+              disabled={exportingCSV}
+            >
+              {exportingCSV ? 'Exportando...' : 'Exportar CSV'}
+            </Button>
+            <Button onClick={() => setShowTransactionModal(true)} className="w-full sm:w-auto justify-center" leftIcon={Plus}>
               Nueva transacción
-            </button>
+            </Button>
           </>
         }
         gradientFrom="from-green-50"
@@ -334,7 +372,6 @@ const Transactions = () => {
       <div className="glass-card w-full max-w-full min-w-0">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Filtros y búsqueda</h2>
-          <button className="text-primary-600 text-sm font-medium hover:underline" onClick={clearFilters}>Limpiar filtros</button>
         </div>
         <TransactionFilters
           filters={filters}
@@ -344,6 +381,52 @@ const Transactions = () => {
           onDatePreset={setDatePreset}
         />
       </div>
+
+      {/* Tarjetas de resumen */}
+      {!loading && transactions.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="glass-card bg-gradient-to-br from-green-50/80 to-emerald-100/80 border-green-200/60 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600 mb-1">Total Ingresos</p>
+                <p className="text-2xl font-bold text-green-700">{formatCurrency(stats.totalIncome)}</p>
+                <p className="text-xs text-gray-500 mt-1">{stats.incomeCount} transacciones</p>
+              </div>
+              <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
+                <TrendingUp className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="glass-card bg-gradient-to-br from-red-50/80 to-rose-100/80 border-red-200/60 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600 mb-1">Total Gastos</p>
+                <p className="text-2xl font-bold text-red-700">{formatCurrency(stats.totalExpense)}</p>
+                <p className="text-xs text-gray-500 mt-1">{stats.expenseCount} transacciones</p>
+              </div>
+              <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
+                <TrendingDown className="h-6 w-6 text-red-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className={`glass-card bg-gradient-to-br ${stats.balance >= 0 ? 'from-blue-50/80 to-indigo-100/80 border-blue-200/60' : 'from-orange-50/80 to-amber-100/80 border-orange-200/60'} hover:shadow-lg transition-all duration-300`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600 mb-1">Balance</p>
+                <p className={`text-2xl font-bold ${stats.balance >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
+                  {formatCurrency(stats.balance)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">{pagination.total} total</p>
+              </div>
+              <div className={`h-12 w-12 ${stats.balance >= 0 ? 'bg-blue-100' : 'bg-orange-100'} rounded-full flex items-center justify-center`}>
+                <DollarSign className={`h-6 w-6 ${stats.balance >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lista de transacciones */}
       <div className="glass-card w-full max-w-full min-w-0 overflow-x-auto">
@@ -359,14 +442,57 @@ const Transactions = () => {
           formatCurrency={formatCurrency}
           handleEdit={handleEdit}
           handleDelete={handleDelete}
+          deletingId={deletingId}
           handlePreviewImage={handlePreviewImage}
           handleDownloadAttachment={handleDownloadAttachment}
           downloadLoading={downloadLoading}
           previewLoading={previewLoading}
-          setPreviewImage={setPreviewImage}
-          previewImage={previewImage}
+          onNewTransaction={() => setShowTransactionModal(true)}
         />
       </div>
+
+      {/* Barra de acciones masivas flotante */}
+      {selectedTransactions.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom duration-300">
+          <div className="glass-card shadow-2xl border-2 border-primary-200 px-6 py-4 flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="h-5 w-5 text-primary-600" />
+              <span className="text-sm font-semibold text-gray-900">
+                {selectedTransactions.length} seleccionada{selectedTransactions.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="h-6 w-px bg-gray-300"></div>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowBulkEditModal(true)}
+                leftIcon={Edit3}
+              >
+                Editar
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleDeleteSelected}
+                leftIcon={Trash2}
+              >
+                Eliminar
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedTransactions([])
+                  setSelectAll(false)
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Paginación */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">

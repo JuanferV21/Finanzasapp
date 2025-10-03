@@ -1,4 +1,6 @@
 import { Filter, Search } from 'lucide-react';
+import Button from './ui/Button';
+import Input from './ui/Input';
 
 const TransactionFilters = ({
   filters,
@@ -16,19 +18,13 @@ const TransactionFilters = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
         {/* Búsqueda */}
         <div className="lg:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Buscar
-          </label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              value={filters.search}
-              onChange={(e) => onFilterChange('search', e.target.value)}
-              className="input pl-10"
-              placeholder="Buscar por descripción..."
-            />
-          </div>
+          <Input
+            label="Buscar"
+            placeholder="Buscar por descripción..."
+            value={filters.search}
+            onChange={(e) => onFilterChange('search', e.target.value)}
+            className=""
+          />
         </div>
         {/* Tipo */}
         <div>
@@ -69,14 +65,11 @@ const TransactionFilters = ({
         </div>
         {/* Monto mínimo */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Monto mínimo
-          </label>
-          <input
+          <Input
+            label="Monto mínimo"
             type="number"
             value={filters.minAmount}
             onChange={(e) => onFilterChange('minAmount', e.target.value)}
-            className="input"
             placeholder="0"
             min="0"
             step="0.01"
@@ -84,14 +77,11 @@ const TransactionFilters = ({
         </div>
         {/* Monto máximo */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Monto máximo
-          </label>
-          <input
+          <Input
+            label="Monto máximo"
             type="number"
             value={filters.maxAmount}
             onChange={(e) => onFilterChange('maxAmount', e.target.value)}
-            className="input"
             placeholder="999999"
             min="0"
             step="0.01"
@@ -105,72 +95,40 @@ const TransactionFilters = ({
         </label>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Presets rápidos */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => onDatePreset('today')}
-              className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
-            >
-              Hoy
-            </button>
-            <button
-              onClick={() => onDatePreset('week')}
-              className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
-            >
-              Esta semana
-            </button>
-            <button
-              onClick={() => onDatePreset('month')}
-              className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
-            >
-              Este mes
-            </button>
-            <button
-              onClick={() => onDatePreset('lastMonth')}
-              className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
-            >
-              Mes pasado
-            </button>
-            <button
-              onClick={() => onDatePreset('year')}
-              className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
-            >
-              Este año
-            </button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ghost" size="sm" onClick={() => onDatePreset('today')}>Hoy</Button>
+            <Button variant="ghost" size="sm" onClick={() => onDatePreset('week')}>Esta semana</Button>
+            <Button variant="ghost" size="sm" onClick={() => onDatePreset('month')}>Este mes</Button>
+            <Button variant="ghost" size="sm" onClick={() => onDatePreset('lastMonth')}>Mes pasado</Button>
+            <Button variant="ghost" size="sm" onClick={() => onDatePreset('year')}>Este año</Button>
           </div>
           {/* Fecha inicio */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Desde
-            </label>
-            <input
+            <Input
+              label="Desde"
               type="date"
               value={filters.startDate}
               onChange={(e) => onFilterChange('startDate', e.target.value)}
-              className="input text-sm"
+              className="text-sm"
             />
           </div>
           {/* Fecha fin */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Hasta
-            </label>
-            <input
+            <Input
+              label="Hasta"
               type="date"
               value={filters.endDate}
               onChange={(e) => onFilterChange('endDate', e.target.value)}
-              className="input text-sm"
+              className="text-sm"
             />
           </div>
         </div>
       </div>
       {/* Botón limpiar filtros */}
       <div className="mt-4 flex justify-end">
-        <button
-          onClick={onClearFilters}
-          className="text-sm text-gray-600 hover:text-gray-900"
-        >
+        <Button variant="secondary" onClick={onClearFilters}>
           Limpiar filtros
-        </button>
+        </Button>
       </div>
     </div>
   );

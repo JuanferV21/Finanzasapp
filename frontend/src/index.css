@@ -3,47 +3,45 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    font-family: 'Inter', system-ui, sans-serif;
-  }
-  
-  body {
-    @apply bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 text-gray-900;
-  }
+  html { font-family: 'Inter', system-ui, sans-serif; }
+
+  body { @apply text-gray-900; }
+
+  /* Tipografía base profesional */
+  h1 { @apply text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-gray-900; }
+  h2 { @apply text-xl sm:text-2xl font-bold tracking-tight text-gray-900; }
+  h3 { @apply text-lg sm:text-xl font-semibold text-gray-900; }
+  p  { @apply text-gray-700; }
 }
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    @apply inline-flex items-center gap-2 h-10 px-4 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   
-  .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
-  }
+  .btn-primary { @apply btn text-white bg-primary-600 hover:bg-primary-700 shadow-sm focus:ring-primary-500; }
   
-  .btn-secondary {
-    @apply btn bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500;
-  }
+  .btn-secondary { @apply btn bg-white text-gray-900 border border-gray-300 hover:bg-gray-50 shadow-sm focus:ring-gray-500; }
   
-  .btn-success {
-    @apply btn bg-success-600 text-white hover:bg-success-700 focus:ring-success-500;
-  }
+  .btn-success { @apply btn bg-success-600 text-white hover:bg-success-700 focus:ring-success-500; }
   
-  .btn-danger {
-    @apply btn bg-danger-600 text-white hover:bg-danger-700 focus:ring-danger-500;
-  }
+  .btn-danger { @apply btn bg-danger-600 text-white hover:bg-danger-700 focus:ring-danger-500; }
+
+  .btn-ghost { @apply btn bg-transparent text-gray-700 hover:bg-gray-100 focus:ring-gray-400; }
   
-  .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
-  }
+  .card { @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6; }
+  .card-hover { @apply transition-shadow duration-200 hover:shadow-md; }
+  .card-section { @apply px-6 py-4 border-t border-gray-100; }
   
-  .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
-  }
+  .input { @apply w-full h-10 px-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent; }
   
   .select {
     @apply input appearance-none bg-white;
   }
+
+  .badge { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium; }
+  .badge-primary { @apply badge bg-primary-50 text-primary-700 ring-1 ring-inset ring-primary-200; }
+  .badge-gray { @apply badge bg-gray-100 text-gray-700 ring-1 ring-inset ring-gray-200; }
 
   /* Glass Effect Components */
   .glass {
@@ -52,6 +50,9 @@
   
   .glass-white {
     @apply bg-white/80 backdrop-blur-md border border-white/30 shadow-lg;
+  }
+  .dark .glass-white {
+    @apply bg-gray-900/60 border-gray-700 text-gray-100;
   }
   
   .glass-dark {
@@ -62,9 +63,7 @@
     @apply bg-primary-500/10 backdrop-blur-md border border-primary-500/20 shadow-lg;
   }
   
-  .glass-card {
-    @apply glass-white rounded-xl p-6;
-  }
+  .glass-card { @apply glass-white rounded-xl p-6; }
   
   .glass-modal {
     @apply glass-white rounded-xl shadow-2xl;
@@ -90,9 +89,16 @@
     @apply glass-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50;
   }
 
+  /* Dark mode variants */
+  .dark .card { @apply bg-gray-900 text-gray-100 border-gray-800; }
+  .dark .input { @apply bg-gray-900 border-gray-700 text-gray-100 placeholder-gray-400 focus:ring-primary-500; }
+  .dark .select { @apply bg-gray-900; }
+  .dark .btn-secondary { @apply bg-gray-800 text-gray-100 border-gray-700 hover:bg-gray-700; }
+  .dark .glass-white { @apply bg-gray-900/70 border-gray-800 text-gray-100; }
+
   /* Z-index hierarchy for better layer management */
   .z-dropdown {
-    z-index: 9999;
+    z-index: 99999 !important;
   }
   
   .z-modal {
@@ -100,7 +106,7 @@
   }
   
   .z-overlay {
-    z-index: 999;
+    z-index: 99998 !important;
   }
   
   .z-sidebar-mobile {
@@ -120,4 +126,7 @@
   .text-balance {
     text-wrap: balance;
   }
-} 
+  .theme-gradient-bg {
+    @apply bg-gradient-to-br from-gray-50 via-gray-50 to-white dark:from-gray-900 dark:via-gray-900 dark:to-black;
+  }
+}

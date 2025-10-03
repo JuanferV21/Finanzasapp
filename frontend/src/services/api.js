@@ -1,9 +1,8 @@
 import axios from 'axios'
-import { demoAPI } from './demoAuth'
 
-// Crear instancia de axios (solo para compatibilidad)
+// Crear instancia de axios
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -29,7 +28,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expirado o inválido
+      // Token expirado o inválido: limpiar sesión y preservar destino
+      try {
+        const current = window.location.pathname + window.location.search
+        sessionStorage.setItem('auth_error', 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.')
+        sessionStorage.setItem('next', current)
+      } catch (_) {}
       localStorage.removeItem('token')
       window.location.href = '/login'
     }
@@ -43,55 +47,60 @@ export const authService = {
   register: (userData) => api.post('/auth/register', userData),
   getProfile: () => api.get('/auth/me'),
   logout: () => api.post('/auth/logout'),
+  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token, password) => api.post(`/auth/reset-password/${token}`, { password }),
 }
 
-// Servicios de transacciones (modo demo)
+// Servicios de transacciones
 export const transactionService = {
-  getAll: (params) => demoAPI.getTransactions(),
-  getById: (id) => Promise.resolve({}),
-  create: (data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  update: (id, data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  delete: (id) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  getCategories: () => Promise.resolve({ data: ['Alimentación', 'Transporte', 'Entretenimiento', 'Servicios', 'Salario', 'Freelance', 'Inversiones'] }),
-  downloadAttachment: (transactionId, filename) => Promise.resolve({}),
+  getAll: (params) => api.get('/transactions', { params }),
+  getById: (id) => api.get(`/transactions/${id}`),
+  create: (data) => api.post('/transactions', data),
+  update: (id, data) => api.put(`/transactions/${id}`, data),
+  delete: (id) => api.delete(`/transactions/${id}`),
+  getCategories: () => api.get('/transactions/categories'),
+  downloadAttachment: (transactionId, filename) => 
+    api.get(`/transactions/${transactionId}/attachments/${filename}`, { responseType: 'blob' }),
 }
 
-// Servicios de estadísticas (modo demo)
+// Servicios de estadísticas
 export const statsService = {
-  getSummary: (params) => demoAPI.getStats().then(data => ({ data })),
-  getCategories: (params) => demoAPI.getCategoryStats().then(data => ({ data })),
-  getMonthly: (params) => demoAPI.getMonthlyStats().then(data => ({ data })),
-  getTrends: () => Promise.resolve({ data: [] }),
+  getSummary: (params) => api.get('/stats/summary', { params }),
+  getCategories: (params) => api.get('/stats/categories', { params }),
+  getMonthly: (params) => api.get('/stats/monthly', { params }),
+  getTrends: (params) => api.get('/stats/trends', { params }),
 }
 
-// Servicios de presupuestos (modo demo)
+// Servicios de presupuestos
 export const budgetService = {
-  getAll: (params) => demoAPI.getBudgets().then(data => ({ data })),
-  create: (data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  delete: (id) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-};
+  getAll: (params) => api.get('/budgets', { params }),
+  create: (data) => api.post('/budgets', data),
+  update: (id, data) => api.put(`/budgets/${id}`, data),
+  delete: (id) => api.delete(`/budgets/${id}`),
+}
 
-// Servicio de metas de ahorro (modo demo)
+// Servicio de metas de ahorro
 export const goalService = {
-  getAll: () => demoAPI.getGoals().then(data => ({ data })),
-  create: (data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  update: (id, data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  delete: (id) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  notify: (data) => Promise.resolve({ data: { success: true } }),
-};
+  getAll: () => api.get('/goals'),
+  getById: (id) => api.get(`/goals/${id}`),
+  create: (data) => api.post('/goals', data),
+  update: (id, data) => api.put(`/goals/${id}`, data),
+  delete: (id) => api.delete(`/goals/${id}`),
+  notify: (data) => api.post('/goals/notify', data),
+}
 
-// Servicio de aportes a metas (modo demo)
+// Servicio de aportes a metas
 export const contributionService = {
-  getByGoal: (goalId) => Promise.resolve({ data: [] }),
-  create: (data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  update: (id, data) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-  delete: (id) => Promise.resolve({ data: { success: true, message: 'Función deshabilitada en modo demo' } }),
-};
+  getByGoal: (goalId) => api.get(`/contributions/${goalId}`),
+  create: (data) => api.post('/contributions', data),
+  update: (id, data) => api.put(`/contributions/${id}`, data),
+  delete: (id) => api.delete(`/contributions/${id}`),
+}
 
 export const pushService = {
-  getVapidKey: () => Promise.resolve({ data: '' }),
-  subscribe: (subscription) => Promise.resolve({ data: { success: true } }),
-  send: (userId, title, body) => Promise.resolve({ data: { success: true } }),
-};
+  getVapidKey: () => api.get('/goals/vapid-key'),
+  subscribe: (subscription) => api.post('/goals/subscribe', { subscription }),
+  send: (userId, title, body) => api.post('/goals/push', { userId, title, body }),
+}
 
 export default api 

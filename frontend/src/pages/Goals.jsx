@@ -10,11 +10,11 @@ import { pushService } from '../services/api';
 import PageHeader from '../components/PageHeader';
 
 const initialForm = {
-  nombre: '',
-  montoObjetivo: '',
-  montoAhorrado: '',
-  fechaLimite: '',
-  notas: '',
+  name: '',
+  targetAmount: '',
+  savedAmount: '',
+  deadline: '',
+  notes: '',
 };
 
 const LOGROS = [
@@ -31,31 +31,60 @@ const LOGROS = [
 function getUnlockedAchievements(goals, allContributions) {
   const unlocked = [];
   if (goals.length > 0) unlocked.push('first_goal');
-  if (goals.some(g => g.montoAhorrado >= g.montoObjetivo)) unlocked.push('first_achieved');
-  if (goals.filter(g => g.montoAhorrado >= g.montoObjetivo).length >= 3) unlocked.push('three_achieved');
+  if (goals.some(g => g.savedAmount >= g.targetAmount)) unlocked.push('first_achieved');
+  if (goals.filter(g => g.savedAmount >= g.targetAmount).length >= 3) unlocked.push('three_achieved');
   // 3 aportes en un mes
   const contribsByMonth = {};
   allContributions.forEach(c => {
-    if (!c.fecha) return;
-    const d = new Date(c.fecha);
+    if (!c.date) return;
+    const d = new Date(c.date);
     const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
     contribsByMonth[key] = (contribsByMonth[key] || 0) + 1;
   });
   if (Object.values(contribsByMonth).some(count => count >= 3)) unlocked.push('three_contributions_month');
   // Meta alcanzada antes de la fecha límite
-  if (goals.some(g => g.montoAhorrado >= g.montoObjetivo && g.fechaLimite && new Date(g.updatedAt) < new Date(g.fechaLimite))) unlocked.push('early_achiever');
+  if (goals.some(g => g.savedAmount >= g.targetAmount && g.deadline && new Date(g.updatedAt) < new Date(g.deadline))) unlocked.push('early_achiever');
   // Aporte más grande
-  if (allContributions.some(c => Number(c.monto) >= 500)) unlocked.push('big_contribution');
+  if (allContributions.some(c => Number(c.amount) >= 500)) unlocked.push('big_contribution');
   // Meta con más de $1000 ahorrado
-  if (goals.some(g => g.montoAhorrado >= 1000)) unlocked.push('goal_1000');
+  if (goals.some(g => g.savedAmount >= 1000)) unlocked.push('goal_1000');
   // 6 meses seguidos ahorrando
   const monthsSet = new Set(allContributions.map(c => {
-    if (!c.fecha) return null;
-    const d = new Date(c.fecha);
+    if (!c.date) return null;
+    const d = new Date(c.date);
     return `${d.getFullYear()}-${d.getMonth() + 1}`;
   }).filter(Boolean));
   if (monthsSet.size >= 6) unlocked.push('six_months_saving');
   return unlocked;
+}
+
+// Proyección de ahorro necesaria hacia la fecha límite
+function getProjection(goal, contributions) {
+  if (!goal.deadline) return null;
+  const today = new Date();
+  const end = new Date(goal.deadline);
+  if (isAfter(today, end)) return null;
+  const monthsLeft = Math.max(1, differenceInMonths(end, today) + 1);
+  const restante = Math.max(0, goal.targetAmount - goal.savedAmount);
+  const mensualNecesario = Math.ceil(restante / monthsLeft);
+  // Calcular aportes de los últimos 3 meses
+  const aportesRecientes = (contributions || []).filter(c => {
+    const d = c.date ? new Date(c.date) : null;
+    return d && d >= new Date(today.getFullYear(), today.getMonth() - 2, 1);
+  });
+  const totalAportado = aportesRecientes.reduce((sum, c) => sum + Number(c.amount), 0);
+  const meses = Math.min(monthsLeft, 3);
+  const promedioMensual = meses > 0 ? Math.round(totalAportado / meses) : 0;
+  let estado = 'En línea';
+  let badge = 'bg-blue-100 text-blue-700';
+  if (promedioMensual > mensualNecesario) {
+    estado = '¡Vas adelantado!';
+    badge = 'bg-green-100 text-green-700';
+  } else if (promedioMensual < mensualNecesario - 1) {
+    estado = 'Atrasado';
+    badge = 'bg-red-100 text-red-700';
+  }
+  return { mensualNecesario, promedioMensual, estado, badge, monthsLeft };
 }
 
 const Goals = () => {
@@ -70,7 +99,7 @@ const Goals = () => {
   const [showContributions, setShowContributions] = useState(false);
   const [contributions, setContributions] = useState([]);
   const [contribGoal, setContribGoal] = useState(null);
-  const [contribForm, setContribForm] = useState({ monto: '', fecha: '', nota: '' });
+  const [contribForm, setContribForm] = useState({ amount: '', date: '', note: '' });
   const [editingContribId, setEditingContribId] = useState(null);
   const [contribLoading, setContribLoading] = useState(false);
   const [contribError, setContribError] = useState('');
@@ -127,7 +156,7 @@ const Goals = () => {
 
   // Actualizar solo una meta en el estado
   const updateGoalInState = (updatedGoal) => {
-    setGoals((prev) => prev.map(g => g._id === updatedGoal._id ? updatedGoal : g));
+    setGoals((prev) => prev.map(g => g.id === updatedGoal.id ? updatedGoal : g));
   };
 
   // Cargar metas reales
@@ -152,13 +181,13 @@ const Goals = () => {
   const openModal = (goal = null) => {
     if (goal) {
       setForm({
-        nombre: goal.nombre,
-        montoObjetivo: goal.montoObjetivo,
-        montoAhorrado: goal.montoAhorrado,
-        fechaLimite: goal.fechaLimite ? goal.fechaLimite.slice(0, 10) : '',
-        notas: goal.notas || '',
+        name: goal.name,
+        targetAmount: goal.targetAmount,
+        savedAmount: goal.savedAmount,
+        deadline: goal.deadline ? goal.deadline.slice(0, 10) : '',
+        notes: goal.notes || '',
       });
-      setEditingId(goal._id);
+      setEditingId(goal.id);
     } else {
       setForm(initialForm);
       setEditingId(null);
@@ -211,7 +240,7 @@ const Goals = () => {
     setContribLoading(true);
     setContribError('');
     try {
-      const res = await contributionService.getByGoal(goal._id);
+      const res = await contributionService.getByGoal(goal.id);
       setContributions(res.data);
     } catch (err) {
       setContribError('Error cargando aportes');
@@ -230,12 +259,12 @@ const Goals = () => {
     setContribLoading(true);
     setContribError('');
     // Validar antes de enviar
-    if (!isValidAmount(contribForm.monto)) {
+    if (!isValidAmount(contribForm.amount)) {
       setContribError('El monto debe ser un número mayor a 0');
       setContribLoading(false);
       return;
     }
-    if (contribForm.fecha && !isValidDate(contribForm.fecha)) {
+    if (contribForm.date && !isValidDate(contribForm.date)) {
       setContribError('La fecha debe estar completa y en formato AAAA-MM-DD');
       setContribLoading(false);
       return;
@@ -243,8 +272,8 @@ const Goals = () => {
     try {
       const data = {
         ...contribForm,
-        monto: Number(contribForm.monto),
-        goal: contribGoal._id,
+        amount: Number(contribForm.amount),
+        goalId: contribGoal.id,
       };
       if (editingContribId) {
         await contributionService.update(editingContribId, data);
@@ -255,14 +284,14 @@ const Goals = () => {
       }
       // Refrescar aportes y meta individual
       const [aportesRes, goalRes] = await Promise.all([
-        contributionService.getByGoal(contribGoal._id),
+        contributionService.getByGoal(contribGoal.id),
         goalService.getAll()
       ]);
       setContributions(aportesRes.data);
       // Actualizar solo la meta afectada
-      const updatedGoal = goalRes.data.find(g => g._id === contribGoal._id);
+      const updatedGoal = goalRes.data.find(g => g.id === contribGoal.id);
       if (updatedGoal) updateGoalInState(updatedGoal);
-      setContribForm({ monto: '', fecha: '', nota: '' });
+      setContribForm({ amount: '', date: '', note: '' });
       setEditingContribId(null);
     } catch (err) {
       setContribError(err?.response?.data?.message || 'Error guardando aporte');
@@ -274,11 +303,11 @@ const Goals = () => {
   // Editar aporte
   const handleEditContribution = (contrib) => {
     setContribForm({
-      monto: contrib.monto,
-      fecha: contrib.fecha ? contrib.fecha.slice(0, 10) : '',
-      nota: contrib.nota || '',
+      amount: contrib.amount,
+      date: contrib.date ? contrib.date.slice(0, 10) : '',
+      note: contrib.note || '',
     });
-    setEditingContribId(contrib._id);
+    setEditingContribId(contrib.id);
   };
 
   // Eliminar aporte
@@ -289,10 +318,10 @@ const Goals = () => {
     try {
       await contributionService.delete(id);
       setSuccessMsg('Aporte eliminado');
-      const res = await contributionService.getByGoal(contribGoal._id);
+      const res = await contributionService.getByGoal(contribGoal.id);
       setContributions(res.data);
       loadGoals();
-      setContribForm({ monto: '', fecha: '', nota: '' });
+      setContribForm({ amount: '', date: '', note: '' });
       setEditingContribId(null);
     } catch (err) {
       setContribError('Error eliminando aporte');
@@ -317,19 +346,19 @@ const Goals = () => {
   }, [successMsg]);
 
   const getProjection = (goal, contributions) => {
-    if (!goal.fechaLimite) return null;
+    if (!goal.deadline) return null;
     const today = new Date();
-    const end = new Date(goal.fechaLimite);
+    const end = new Date(goal.deadline);
     if (isAfter(today, end)) return null;
     const monthsLeft = Math.max(1, differenceInMonths(end, today) + 1);
-    const restante = Math.max(0, goal.montoObjetivo - goal.montoAhorrado);
+    const restante = Math.max(0, goal.targetAmount - goal.savedAmount);
     const mensualNecesario = Math.ceil(restante / monthsLeft);
     // Calcular aportes de los últimos 3 meses
     const aportesRecientes = (contributions || []).filter(c => {
-      const d = c.fecha ? new Date(c.fecha) : null;
+      const d = c.date ? new Date(c.date) : null;
       return d && d >= new Date(today.getFullYear(), today.getMonth() - 2, 1);
     });
-    const totalAportado = aportesRecientes.reduce((sum, c) => sum + Number(c.monto), 0);
+    const totalAportado = aportesRecientes.reduce((sum, c) => sum + Number(c.amount), 0);
     const meses = Math.min(monthsLeft, 3);
     const promedioMensual = meses > 0 ? Math.round(totalAportado / meses) : 0;
     let estado = 'En línea';
@@ -348,12 +377,12 @@ const Goals = () => {
   function exportGoalsToCSV(goals) {
     const header = ['Nombre', 'Monto objetivo', 'Monto ahorrado', 'Fecha límite', 'Notas', 'Estado', 'Creada', 'Editada'];
     const rows = goals.map(g => [
-      g.nombre,
-      g.montoObjetivo,
-      g.montoAhorrado,
-      g.fechaLimite ? g.fechaLimite.slice(0,10) : '',
-      g.notas || '',
-      g.montoAhorrado >= g.montoObjetivo ? 'Alcanzada' : 'En progreso',
+      g.name,
+      g.targetAmount,
+      g.savedAmount,
+      g.deadline ? g.deadline.slice(0,10) : '',
+      g.notes || '',
+      g.savedAmount >= g.targetAmount ? 'Alcanzada' : 'En progreso',
       g.createdAt ? g.createdAt.slice(0,10) : '',
       g.updatedAt ? g.updatedAt.slice(0,10) : ''
     ]);
@@ -383,13 +412,13 @@ const Goals = () => {
   // Exportar aportes de una meta a CSV
   function exportContributionsToCSV(goal, contributions) {
     const header = ['Meta', 'Monto', 'Fecha', 'Nota'];
-    const rows = contributions.map(c => [goal.nombre, c.monto, c.fecha ? c.fecha.slice(0,10) : '', c.nota || '']);
+    const rows = contributions.map(c => [goal.name, c.amount, c.date ? c.date.slice(0,10) : '', c.note || '']);
     const csv = [header, ...rows].map(r => r.map(x => `"${x}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `aportes_${goal.nombre.replace(/\s+/g,'_')}.csv`;
+    a.download = `aportes_${goal.name.replace(/\s+/g,'_')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -405,7 +434,7 @@ const Goals = () => {
     const imgWidth = pageWidth - 40;
     const imgHeight = canvas.height * imgWidth / canvas.width;
     pdf.addImage(imgData, 'PNG', 20, 20, imgWidth, imgHeight);
-    pdf.save(`aportes_${goal.nombre.replace(/\s+/g,'_')}.pdf`);
+    pdf.save(`aportes_${goal.name.replace(/\s+/g,'_')}.pdf`);
   }
 
   // Cargar todos los aportes de todas las metas para logros
@@ -413,7 +442,7 @@ const Goals = () => {
     const all = [];
     for (const g of goals) {
       try {
-        const res = await contributionService.getByGoal(g._id);
+        const res = await contributionService.getByGoal(g.id);
         all.push(...res.data);
       } catch {}
     }
@@ -443,43 +472,43 @@ const Goals = () => {
     const notifs = [];
     const today = new Date();
     goals.forEach(goal => {
-      if (!goal.fechaLimite) return;
-      const end = new Date(goal.fechaLimite);
+      if (!goal.deadline) return;
+      const end = new Date(goal.deadline);
       const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
       // Meta próxima a vencerse (menos de 14 días)
-      if (diffDays > 0 && diffDays <= 14 && goal.montoAhorrado < goal.montoObjetivo) {
+      if (diffDays > 0 && diffDays <= 14 && goal.savedAmount < goal.targetAmount) {
         notifs.push({
-          key: `close_${goal._id}`,
+          key: `close_${goal.id}`,
           type: 'warning',
-          msg: `¡Tu meta "${goal.nombre}" está a ${diffDays} días de la fecha límite! ¿Quieres hacer un último aporte?`,
+          msg: `¡Tu meta "${goal.name}" está a ${diffDays} días de la fecha límite! ¿Quieres hacer un último aporte?`,
         });
       }
       // Meta atrasada (no cumple ahorro mensual necesario)
-      if (goal.fechaLimite && goal.montoAhorrado < goal.montoObjetivo) {
+      if (goal.deadline && goal.savedAmount < goal.targetAmount) {
         const monthsLeft = Math.max(1, differenceInMonths(end, today) + 1);
-        const restante = Math.max(0, goal.montoObjetivo - goal.montoAhorrado);
+        const restante = Math.max(0, goal.targetAmount - goal.savedAmount);
         const mensualNecesario = Math.ceil(restante / monthsLeft);
-        if (mensualNecesario > 0 && mensualNecesario > goal.montoAhorrado / (monthsLeft + 1)) {
+        if (mensualNecesario > 0 && mensualNecesario > goal.savedAmount / (monthsLeft + 1)) {
           notifs.push({
-            key: `late_${goal._id}`,
+            key: `late_${goal.id}`,
             type: 'danger',
-            msg: `Vas atrasado en la meta "${goal.nombre}". Deberías ahorrar $${mensualNecesario}/mes para llegar a tiempo.`,
+            msg: `Vas atrasado en la meta "${goal.name}". Deberías ahorrar $${mensualNecesario}/mes para llegar a tiempo.`,
           });
         }
       }
     });
     // Sin aportes en 30 días
     goals.forEach(goal => {
-      if (!goal._id) return;
-      const contribs = JSON.parse(localStorage.getItem(`contribs_${goal._id}`) || '[]');
-      const last = contribs.length ? new Date(contribs[contribs.length - 1].fecha) : null;
+      if (!goal.id) return;
+      const contribs = JSON.parse(localStorage.getItem(`contribs_${goal.id}`) || '[]');
+      const last = contribs.length ? new Date(contribs[contribs.length - 1].date) : null;
       if (last) {
         const diff = Math.ceil((today - last) / (1000 * 60 * 60 * 24));
-        if (diff >= 30 && goal.montoAhorrado < goal.montoObjetivo) {
+        if (diff >= 30 && goal.savedAmount < goal.targetAmount) {
           notifs.push({
-            key: `inactive_${goal._id}`,
+            key: `inactive_${goal.id}`,
             type: 'info',
-            msg: `No has hecho aportes a "${goal.nombre}" en ${diff} días. ¡No pierdas el ritmo!`,
+            msg: `No has hecho aportes a "${goal.name}" en ${diff} días. ¡No pierdas el ritmo!`,
           });
         }
       }
@@ -491,8 +520,8 @@ const Goals = () => {
   useEffect(() => {
     goals.forEach(async goal => {
       try {
-        const res = await contributionService.getByGoal(goal._id);
-        localStorage.setItem(`contribs_${goal._id}`, JSON.stringify(res.data.sort((a, b) => new Date(a.fecha) - new Date(b.fecha))));
+        const res = await contributionService.getByGoal(goal.id);
+        localStorage.setItem(`contribs_${goal.id}`, JSON.stringify(res.data.sort((a, b) => new Date(a.date) - new Date(b.date))));
       } catch {}
     });
   }, [goals]);
@@ -516,8 +545,17 @@ const Goals = () => {
       const pushKey = `notif_push_sent_${n.key}`;
       if (pushEnabled && !localStorage.getItem(pushKey)) {
         try {
-          // Obtener userId del usuario autenticado (puedes ajustar según tu AuthContext)
-          const userId = JSON.parse(localStorage.getItem('user'))?._id;
+          // Obtener userId del usuario autenticado (puede no existir en localStorage)
+          let userId = null;
+          try {
+            const raw = localStorage.getItem('user');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              userId = parsed && parsed.id ? parsed.id : null;
+            }
+          } catch (e) {
+            userId = null;
+          }
           if (userId) {
             await pushService.send(userId, 'Recordatorio de Meta', n.msg);
             localStorage.setItem(pushKey, '1');
@@ -587,14 +625,14 @@ const Goals = () => {
       {/* Lista de metas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
         {goals.map(goal => (
-          <div key={goal._id} className="glass-card flex flex-col gap-3 w-full max-w-full min-w-0">
+          <div key={goal.id} className="glass-card flex flex-col gap-3 w-full max-w-full min-w-0">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-1">
-                {goal.montoAhorrado >= goal.montoObjetivo ? <CheckCircle className="text-green-500 h-5 w-5 animate-bounce" title="Meta alcanzada" /> : null} {goal.nombre}
+                {goal.savedAmount >= goal.targetAmount ? <CheckCircle className="text-green-500 h-5 w-5 animate-bounce" title="Meta alcanzada" /> : null} {goal.name}
               </h2>
-              {goal.montoAhorrado >= goal.montoObjetivo ? (
+              {goal.savedAmount >= goal.targetAmount ? (
                 <span className="bg-green-200 text-green-800 px-2 py-1 rounded text-xs font-bold animate-pulse">Alcanzada</span>
-              ) : goal.fechaLimite && differenceInMonths(new Date(goal.fechaLimite), new Date()) + 1 <= 2 ? (
+              ) : goal.deadline && differenceInMonths(new Date(goal.deadline), new Date()) + 1 <= 2 ? (
                 <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-bold animate-pulse">¡Meta próxima!</span>
               ) : (
                 <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">En progreso</span>
@@ -602,43 +640,43 @@ const Goals = () => {
             </div>
             <div>
               <div className="flex justify-between text-sm text-gray-600 mb-1">
-                <span>${goal.montoAhorrado} / ${goal.montoObjetivo}</span>
-                {goal.fechaLimite && <span>Meta: {goal.fechaLimite.slice(0, 10)}</span>}
+                <span>${goal.savedAmount} / ${goal.targetAmount}</span>
+                {goal.deadline && <span>Meta: {goal.deadline.slice(0, 10)}</span>}
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden relative group">
                 <div
-                  className={`h-3 rounded-full transition-all duration-700 ease-out ${goal.montoAhorrado >= goal.montoObjetivo ? 'bg-green-500' : goal.fechaLimite && differenceInMonths(new Date(goal.fechaLimite), new Date()) + 1 <= 2 ? 'bg-yellow-400' : 'bg-blue-500'}`}
-                  style={{ width: `${Math.min(100, Math.round((goal.montoAhorrado / goal.montoObjetivo) * 100))}%` }}
-                  title={`Progreso: ${Math.min(100, Math.round((goal.montoAhorrado / goal.montoObjetivo) * 100))}%`}
+                  className={`h-3 rounded-full transition-all duration-700 ease-out ${goal.savedAmount >= goal.targetAmount ? 'bg-green-500' : goal.deadline && differenceInMonths(new Date(goal.deadline), new Date()) + 1 <= 2 ? 'bg-yellow-400' : 'bg-blue-500'}`}
+                  style={{ width: `${Math.min(100, Math.round((goal.savedAmount / goal.targetAmount) * 100))}%` }}
+                  title={`Progreso: ${Math.min(100, Math.round((goal.savedAmount / goal.targetAmount) * 100))}%`}
                 ></div>
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <span className="text-xs text-gray-700 font-semibold opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 px-2 py-0.5 rounded shadow">{Math.min(100, Math.round((goal.montoAhorrado / goal.montoObjetivo) * 100))}% ({goal.montoObjetivo - goal.montoAhorrado > 0 ? `Faltan $${goal.montoObjetivo - goal.montoAhorrado}` : '¡Meta cumplida!'})</span>
+                  <span className="text-xs text-gray-700 font-semibold opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 px-2 py-0.5 rounded shadow">{Math.min(100, Math.round((goal.savedAmount / goal.targetAmount) * 100))}% ({goal.targetAmount - goal.savedAmount > 0 ? `Faltan $${goal.targetAmount - goal.savedAmount}` : '¡Meta cumplida!'})</span>
                 </div>
               </div>
-              <div className="text-right text-xs text-gray-500 mt-1">{Math.min(100, Math.round((goal.montoAhorrado / goal.montoObjetivo) * 100))}%</div>
+              <div className="text-right text-xs text-gray-500 mt-1">{Math.min(100, Math.round((goal.savedAmount / goal.targetAmount) * 100))}%</div>
             </div>
             <div className="flex gap-2 justify-end">
               <button className="btn-secondary flex items-center gap-1 group" title="Editar meta" onClick={() => openModal(goal)}>
                 <Edit className="h-4 w-4 group-hover:text-primary-600" /> Editar
               </button>
-              <button className="btn-danger flex items-center gap-1 group" title="Eliminar meta" onClick={() => handleDelete(goal._id)} disabled={deletingId === goal._id}>
-                <Trash2 className="h-4 w-4 group-hover:text-red-700" /> {deletingId === goal._id ? 'Eliminando...' : 'Eliminar'}
+              <button className="btn-danger flex items-center gap-1 group" title="Eliminar meta" onClick={() => handleDelete(goal.id)} disabled={deletingId === goal.id}>
+                <Trash2 className="h-4 w-4 group-hover:text-red-700" /> {deletingId === goal.id ? 'Eliminando...' : 'Eliminar'}
               </button>
               <button className="btn-primary flex items-center gap-1 group" title="Ver y agregar aportes" onClick={() => openContributions(goal)}>
                 <Plus className="h-4 w-4 group-hover:text-white" /> Aportes
               </button>
             </div>
             <div className="text-xs text-gray-400 mt-2">Creada: {goal.createdAt ? goal.createdAt.slice(0,10) : ''}{goal.updatedAt && goal.updatedAt !== goal.createdAt ? ` • Editada: ${goal.updatedAt.slice(0,10)}` : ''}</div>
-            {goal.fechaLimite && (
+            {goal.deadline && (
               <Projection goal={goal} />
             )}
-            {goal.fechaLimite && differenceInMonths(new Date(goal.fechaLimite), new Date()) + 1 <= 2 && goal.montoAhorrado < goal.montoObjetivo && (
+            {goal.deadline && differenceInMonths(new Date(goal.deadline), new Date()) + 1 <= 2 && goal.savedAmount < goal.targetAmount && (
               <span className="absolute top-2 right-2 bg-yellow-200 text-yellow-900 px-2 py-1 rounded text-xs font-bold shadow animate-pulse z-10">Próxima a vencer</span>
             )}
-            {notifications.some(n => n.key === `late_${goal._id}`) && (
+            {notifications.some(n => n.key === `late_${goal.id}`) && (
               <span className="absolute top-2 left-2 bg-red-200 text-red-900 px-2 py-1 rounded text-xs font-bold shadow animate-pulse z-10">Atrasada</span>
             )}
-            {notifications.some(n => n.key === `inactive_${goal._id}`) && (
+            {notifications.some(n => n.key === `inactive_${goal.id}`) && (
               <span className="absolute bottom-2 right-2 bg-blue-200 text-blue-900 px-2 py-1 rounded text-xs font-bold shadow animate-pulse z-10">Sin aportes recientes</span>
             )}
           </div>
@@ -661,14 +699,14 @@ const Goals = () => {
               </thead>
               <tbody>
                 {contributions.map((c) => (
-                  <tr key={c._id} className="hover:bg-gray-100">
-                    <td className="px-4 py-2 text-sm text-gray-800">{contribGoal.nombre}</td>
-                    <td className="px-4 py-2 text-sm text-gray-800">${c.monto}</td>
-                    <td className="px-4 py-2 text-sm text-gray-500">{c.fecha ? c.fecha.slice(0, 10) : ''}</td>
-                    <td className="px-4 py-2 text-sm text-gray-500">{c.nota || ''}</td>
+                  <tr key={c.id} className="hover:bg-gray-100">
+                    <td className="px-4 py-2 text-sm text-gray-800">{contribGoal.name}</td>
+                    <td className="px-4 py-2 text-sm text-gray-800">${c.amount}</td>
+                    <td className="px-4 py-2 text-sm text-gray-500">{c.date ? c.date.slice(0, 10) : ''}</td>
+                    <td className="px-4 py-2 text-sm text-gray-500">{c.note || ''}</td>
                     <td className="px-4 py-2 text-sm text-gray-600">
                       <button className="btn-secondary text-xs group-hover:bg-primary-100" title="Editar aporte" onClick={() => handleEditContribution(c)} disabled={contribLoading}>Editar</button>
-                      <button className="btn-danger text-xs group-hover:bg-red-200" title="Eliminar aporte" onClick={() => handleDeleteContribution(c._id)} disabled={contribLoading}>Eliminar</button>
+                      <button className="btn-danger text-xs group-hover:bg-red-200" title="Eliminar aporte" onClick={() => handleDeleteContribution(c.id)} disabled={contribLoading}>Eliminar</button>
                     </td>
                   </tr>
                 ))}
@@ -690,8 +728,8 @@ const Goals = () => {
                 type="text"
                 required
                 ref={firstInputRef}
-                value={form.nombre}
-                onChange={e => setForm({ ...form, nombre: e.target.value })}
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
               />
             </div>
             <div className="flex gap-2">
@@ -702,8 +740,8 @@ const Goals = () => {
                   type="number"
                   min="1"
                   required
-                  value={form.montoObjetivo}
-                  onChange={e => setForm({ ...form, montoObjetivo: e.target.value })}
+                  value={form.targetAmount}
+                  onChange={e => setForm({ ...form, targetAmount: e.target.value })}
                 />
               </div>
               <div className="flex-1">
@@ -713,8 +751,8 @@ const Goals = () => {
                   type="number"
                   min="0"
                   required
-                  value={form.montoAhorrado}
-                  onChange={e => setForm({ ...form, montoAhorrado: e.target.value })}
+                  value={form.savedAmount}
+                  onChange={e => setForm({ ...form, savedAmount: e.target.value })}
                 />
               </div>
             </div>
@@ -724,8 +762,8 @@ const Goals = () => {
                 <input
                   className="input mt-1"
                   type="date"
-                  value={form.fechaLimite}
-                  onChange={e => setForm({ ...form, fechaLimite: e.target.value })}
+                  value={form.deadline}
+                  onChange={e => setForm({ ...form, deadline: e.target.value })}
                 />
               </div>
               <div className="flex-1">
@@ -733,8 +771,8 @@ const Goals = () => {
                 <input
                   className="input mt-1"
                   type="text"
-                  value={form.notas}
-                  onChange={e => setForm({ ...form, notas: e.target.value })}
+                  value={form.notes}
+                  onChange={e => setForm({ ...form, notes: e.target.value })}
                 />
               </div>
             </div>
@@ -752,17 +790,17 @@ const Goals = () => {
       )}
       {/* Modal de historial de aportes */}
       {showContributions && contribGoal && (
-        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in" onClick={e => { if (e.target === e.currentTarget) { setShowContributions(false); setContribForm({ monto: '', fecha: '', nota: '' }); setEditingContribId(null); } }} onKeyDown={e => e.key === 'Escape' && setShowContributions(false)}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in" onClick={e => { if (e.target === e.currentTarget) { setShowContributions(false); setContribForm({ amount: '', date: '', note: '' }); setEditingContribId(null); } }} onKeyDown={e => e.key === 'Escape' && setShowContributions(false)}>
           <div className="glass-modal p-6 w-full max-w-lg space-y-4 relative animate-modal-in">
-            <h2 className="text-xl font-bold mb-2">Aportes a "{contribGoal.nombre}"</h2>
+            <h2 className="text-xl font-bold mb-2">Aportes a "{contribGoal.name}"</h2>
             <div className="flex justify-end gap-2 mb-2">
               <button className="btn-secondary text-xs" onClick={() => exportContributionsToCSV(contribGoal, contributions)} title="Exportar aportes a CSV">Exportar CSV</button>
               <button className="btn-secondary text-xs" onClick={() => exportContributionsToPDF(contribGoal)} title="Exportar aportes a PDF">Exportar PDF</button>
             </div>
             <div id="contributions-export-area">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm text-gray-600">Total aportado: <span className="font-bold text-primary-700">${contribGoal.montoAhorrado}</span> / ${contribGoal.montoObjetivo}</span>
-                <button className="text-gray-400 hover:text-gray-600 flex items-center gap-1" onClick={() => { setShowContributions(false); setContribForm({ monto: '', fecha: '', nota: '' }); setEditingContribId(null); }} title="Cerrar modal">
+                <span className="text-sm text-gray-600">Total aportado: <span className="font-bold text-primary-700">${contribGoal.savedAmount}</span> / ${contribGoal.targetAmount}</span>
+                <button className="text-gray-400 hover:text-gray-600 flex items-center gap-1" onClick={() => { setShowContributions(false); setContribForm({ amount: '', date: '', note: '' }); setEditingContribId(null); }} title="Cerrar modal">
                   <span className="text-lg">×</span> <span className="text-xs">Cerrar</span>
                 </button>
               </div>
@@ -781,27 +819,27 @@ const Goals = () => {
                         min="1"
                         required
                         placeholder="Monto"
-                        value={contribForm.monto}
-                        onChange={e => setContribForm({ ...contribForm, monto: e.target.value })}
+                        value={contribForm.amount}
+                        onChange={e => setContribForm({ ...contribForm, amount: e.target.value })}
                         autoFocus
                       />
                       <input
                         className="input"
                         type="date"
-                        value={contribForm.fecha}
-                        onChange={e => setContribForm({ ...contribForm, fecha: e.target.value })}
+                        value={contribForm.date}
+                        onChange={e => setContribForm({ ...contribForm, date: e.target.value })}
                       />
                       <input
                         className="input"
                         type="text"
                         placeholder="Ej: Primer abono, regalo, etc."
-                        value={contribForm.nota}
-                        onChange={e => setContribForm({ ...contribForm, nota: e.target.value })}
+                        value={contribForm.note}
+                        onChange={e => setContribForm({ ...contribForm, note: e.target.value })}
                       />
                       <button
                         type="submit"
                         className="btn-primary"
-                        disabled={contribLoading || !isValidAmount(contribForm.monto) || (contribForm.fecha && !isValidDate(contribForm.fecha))}
+                        disabled={contribLoading || !isValidAmount(contribForm.amount) || (contribForm.date && !isValidDate(contribForm.date))}
                         title={editingContribId ? 'Guardar cambios' : 'Agregar aporte'}
                       >
                         {editingContribId ? 'Guardar' : 'Agregar'}
@@ -815,14 +853,14 @@ const Goals = () => {
                     ) : (
                       <ul className="divide-y divide-gray-200">
                         {contributions.map((c) => (
-                          <li key={c._id} className="flex items-center justify-between py-2 group transition-colors">
+                          <li key={c.id} className="flex items-center justify-between py-2 group transition-colors">
                             <div>
-                              <div className="font-medium text-gray-800">${c.monto}</div>
-                              <div className="text-xs text-gray-500">{c.fecha ? c.fecha.slice(0, 10) : ''} {c.nota && `- ${c.nota}`}</div>
+                              <div className="font-medium text-gray-800">${c.amount}</div>
+                              <div className="text-xs text-gray-500">{c.date ? c.date.slice(0, 10) : ''} {c.note && `- ${c.note}`}</div>
                             </div>
                             <div className="flex gap-2">
                               <button className="btn-secondary text-xs group-hover:bg-primary-100" title="Editar aporte" onClick={() => handleEditContribution(c)} disabled={contribLoading}>Editar</button>
-                              <button className="btn-danger text-xs group-hover:bg-red-200" title="Eliminar aporte" onClick={() => handleDeleteContribution(c._id)} disabled={contribLoading}>Eliminar</button>
+                              <button className="btn-danger text-xs group-hover:bg-red-200" title="Eliminar aporte" onClick={() => handleDeleteContribution(c.id)} disabled={contribLoading}>Eliminar</button>
                             </div>
                           </li>
                         ))}
@@ -843,11 +881,11 @@ function Projection({ goal }) {
   const [contributions, setContributions] = useState([]);
   useEffect(() => {
     let mounted = true;
-    contributionService.getByGoal(goal._id).then(res => {
+    contributionService.getByGoal(goal.id).then(res => {
       if (mounted) setContributions(res.data);
     });
     return () => { mounted = false; };
-  }, [goal._id]);
+  }, [goal.id]);
   const proj = getProjection(goal, contributions);
   if (!proj) return null;
 
@@ -864,10 +902,10 @@ function Projection({ goal }) {
     });
   }
   contributions.forEach(c => {
-    if (!c.fecha) return;
-    const d = new Date(c.fecha);
+    if (!c.date) return;
+    const d = new Date(c.date);
     const idx = months.findIndex(m => m.year === d.getFullYear() && m.month === d.getMonth());
-    if (idx !== -1) months[idx].total += Number(c.monto);
+    if (idx !== -1) months[idx].total += Number(c.amount);
   });
 
   return (

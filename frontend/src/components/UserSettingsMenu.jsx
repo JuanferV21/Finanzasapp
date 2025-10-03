@@ -47,7 +47,8 @@ const UserSettingsMenu = () => {
   const [preferences, setPreferences] = useState({
     emailNotifications: user?.preferences?.emailNotifications ?? true,
     pushNotifications: user?.preferences?.pushNotifications ?? false,
-    goalReminders: user?.preferences?.goalReminders ?? true
+    goalReminders: user?.preferences?.goalReminders ?? true,
+    darkMode: (typeof window !== 'undefined' && document.documentElement.classList.contains('dark')) || false,
   })
   
   // Estados para feedback
@@ -101,7 +102,8 @@ const UserSettingsMenu = () => {
       setPreferences({
         emailNotifications: user.preferences?.emailNotifications ?? true,
         pushNotifications: user.preferences?.pushNotifications ?? false,
-        goalReminders: user.preferences?.goalReminders ?? true
+        goalReminders: user.preferences?.goalReminders ?? true,
+        darkMode: (typeof window !== 'undefined' && document.documentElement.classList.contains('dark')) || false,
       })
     }
   }, [user])
@@ -250,7 +252,11 @@ const UserSettingsMenu = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(preferences)
+        body: JSON.stringify({
+          emailNotifications: preferences.emailNotifications,
+          pushNotifications: preferences.pushNotifications,
+          goalReminders: preferences.goalReminders,
+        })
       })
 
       const data = await response.json()
@@ -271,6 +277,28 @@ const UserSettingsMenu = () => {
       setLoading(false)
     }
   }
+
+  // Toggle dark mode (solo cliente)
+  const toggleDarkMode = (enabled) => {
+    if (enabled) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
+    }
+    setPreferences(prev => ({ ...prev, darkMode: enabled }))
+  }
+
+  // Cargar preferencia de tema al montar
+  useEffect(() => {
+    const stored = localStorage.getItem('theme')
+    const isDark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+    if (isDark) {
+      document.documentElement.classList.add('dark')
+      setPreferences(prev => ({ ...prev, darkMode: true }))
+    }
+  }, [])
 
   // Exportar datos
   const handleExportData = async (type) => {
@@ -663,6 +691,21 @@ const UserSettingsMenu = () => {
                           className="sr-only peer" 
                           checked={preferences.goalReminders}
                           onChange={(e) => setPreferences({ ...preferences, goalReminders: e.target.checked })}
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Modo oscuro</p>
+                        <p className="text-xs text-gray-500">Interfaz optimizada para ambientes con poca luz</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={preferences.darkMode}
+                          onChange={(e) => toggleDarkMode(e.target.checked)}
                         />
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                       </label>

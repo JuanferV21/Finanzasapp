@@ -1,12 +1,15 @@
 const express = require('express');
 const Transaction = require('../models/Transaction');
 const { auth } = require('../middleware/auth');
+const { sensitiveOpLimiter } = require('../middleware/rateLimiter');
 const FileService = require('../services/fileService');
 
 const router = express.Router();
 
 // Aplicar autenticación a todas las rutas
 router.use(auth);
+// Limitar fuertemente operaciones de migración
+router.use(sensitiveOpLimiter);
 
 // POST /api/migrate/files - Migrar archivos existentes a Cloudinary
 router.post('/files', async (req, res) => {

@@ -1,12 +1,15 @@
 const rateLimit = require('express-rate-limit');
+const isDev = process.env.NODE_ENV !== 'production';
 
 // Rate limiter estricto para autenticación
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 5, // 5 intentos por IP
+  windowMs: isDev ? 60 * 1000 : 15 * 60 * 1000, // 1 min en dev, 15 min en prod
+  max: isDev ? 1000 : 20, // 1000 intentos en dev, 20 en prod (aumentado de 5)
   message: {
-    error: 'Demasiados intentos de autenticación. Intenta de nuevo en 15 minutos.',
-    retryAfter: 15 * 60 // segundos
+    error: isDev
+      ? 'Demasiados intentos en desarrollo. Espera un minuto e intenta de nuevo.'
+      : 'Demasiados intentos de autenticación. Intenta de nuevo en 15 minutos.',
+    retryAfter: isDev ? 60 : 15 * 60 // segundos
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
@@ -14,8 +17,10 @@ const authLimiter = rateLimit({
   handler: (req, res) => {
     console.log(`🚫 Rate limit exceeded for IP: ${req.ip} on ${req.path}`);
     res.status(429).json({
-      error: 'Demasiados intentos de autenticación. Intenta de nuevo en 15 minutos.',
-      retryAfter: 15 * 60
+      error: isDev
+        ? 'Demasiados intentos en desarrollo. Espera un minuto e intenta de nuevo.'
+        : 'Demasiados intentos de autenticación. Intenta de nuevo en 15 minutos.',
+      retryAfter: isDev ? 60 : 15 * 60
     });
   }
 });
@@ -23,9 +28,11 @@ const authLimiter = rateLimit({
 // Rate limiter moderado para APIs generales
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // 100 requests por IP
+  max: isDev ? 10000 : 500, // 10000 requests en dev, 500 en prod
   message: {
-    error: 'Demasiadas solicitudes. Intenta de nuevo en 15 minutos.',
+    error: isDev
+      ? 'Demasiadas solicitudes en desarrollo. Espera 15 minutos.'
+      : 'Demasiadas solicitudes. Intenta de nuevo en 15 minutos.',
     retryAfter: 15 * 60
   },
   standardHeaders: true,
@@ -33,7 +40,9 @@ const apiLimiter = rateLimit({
   handler: (req, res) => {
     console.log(`🚫 API rate limit exceeded for IP: ${req.ip} on ${req.path}`);
     res.status(429).json({
-      error: 'Demasiadas solicitudes. Intenta de nuevo en 15 minutos.',
+      error: isDev
+        ? 'Demasiadas solicitudes en desarrollo. Espera 15 minutos.'
+        : 'Demasiadas solicitudes. Intenta de nuevo en 15 minutos.',
       retryAfter: 15 * 60
     });
   }

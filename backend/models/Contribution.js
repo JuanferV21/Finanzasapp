@@ -1,11 +1,60 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
 
-const contributionSchema = new mongoose.Schema({
-  goal: { type: mongoose.Schema.Types.ObjectId, ref: 'Goal', required: true },
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  monto: { type: Number, required: true },
-  fecha: { type: Date, default: Date.now },
-  nota: { type: String }
-}, { timestamps: true });
+const Contribution = sequelize.define('Contribution', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  goalId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'goals',
+      key: 'id'
+    },
+    validate: {
+      notEmpty: {
+        msg: 'La meta es requerida'
+      }
+    }
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    validate: {
+      notEmpty: {
+        msg: 'El usuario es requerido'
+      }
+    }
+  },
+  amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    validate: {
+      min: {
+        args: [0.01],
+        msg: 'El monto debe ser mayor a 0'
+      }
+    }
+  },
+  date: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+    allowNull: false
+  },
+  note: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  }
+}, {
+  tableName: 'contributions',
+  timestamps: true
+});
 
-module.exports = mongoose.model('Contribution', contributionSchema); 
+module.exports = Contribution; 

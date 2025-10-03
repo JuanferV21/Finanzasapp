@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { demoAuthService } from '../services/demoAuth'
+import { authService } from '../services/api'
 
 const AuthContext = createContext()
 
@@ -15,39 +15,66 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Verificar token al cargar la aplicación (modo demo)
+  // Verificar token al cargar la aplicación
   useEffect(() => {
-    if (demoAuthService.isAuthenticated()) {
-      const currentUser = demoAuthService.getCurrentUser()
-      setUser(currentUser)
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token')
+      if (token) {
+        try {
+          const response = await authService.getProfile()
+          setUser(response.data.user)
+        } catch (error) {
+          console.error('Error verificando token:', error)
+          localStorage.removeItem('token')
+        }
+      }
+      setLoading(false)
     }
-    setLoading(false)
+
+    checkAuth()
   }, [])
 
   const login = async (email, password) => {
     try {
-      const { user } = await demoAuthService.login(email, password)
+      const response = await authService.login({ email, password })
+      const { token, user } = response.data
+      
+      localStorage.setItem('token', token)
       setUser(user)
+      
       return { success: true }
     } catch (error) {
       console.error('Error en login:', error)
       return {
         success: false,
-        message: error.message || 'Error al iniciar sesión'
+        message: error.response?.data?.message || 'Error al iniciar sesión'
       }
     }
   }
 
   const register = async (name, email, password) => {
-    // En modo demo, redirigir al login
-    return {
-      success: false,
-      message: 'Registro deshabilitado en modo demo. Usa: demo@finanzasdash.com / demo123'
+    try {
+      const response = await authService.register({ name, email, password })
+      const { token, user } = response.data
+      if (token && user) {
+        localStorage.setItem('token', token)
+        setUser(user)
+      }
+      return {
+        success: true,
+        message: response.data.message || 'Usuario registrado exitosamente'
+      }
+    } catch (error) {
+      console.error('Error en registro:', error)
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Error al registrar usuario'
+      }
     }
   }
 
   const logout = () => {
-    demoAuthService.logout()
+    localStorage.removeItem('token')
     setUser(null)
   }
 

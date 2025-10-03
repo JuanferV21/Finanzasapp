@@ -1,14 +1,16 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Transactions from './pages/Transactions'
 import Reports from './pages/Reports'
 import Budgets from './pages/Budgets';
 import Goals from './pages/Goals';
 import Layout from './components/Layout'
-import DemoBanner from './components/DemoBanner'
 
 // Componente para proteger rutas
 const ProtectedRoute = ({ children }) => {
@@ -54,6 +56,16 @@ function AppRoutes() {
           <Register />
         </PublicRoute>
       } />
+      <Route path="/forgot-password" element={
+        <PublicRoute>
+          <ForgotPassword />
+        </PublicRoute>
+      } />
+      <Route path="/reset-password/:token" element={
+        <PublicRoute>
+          <ResetPassword />
+        </PublicRoute>
+      } />
       
       {/* Rutas protegidas */}
       <Route path="/" element={
@@ -77,10 +89,11 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <DemoBanner />
-      <AppRoutes />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </ThemeProvider>
   )
 }
 

@@ -6,13 +6,15 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "restart": "lsof -ti:5001 | xargs kill -9 2>/dev/null; sleep 1; node server.js",
+    "kill": "lsof -ti:5001 | xargs kill -9 2>/dev/null",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "finanzas",
     "dashboard",
     "api",
-    "mongodb",
+    "mysql",
     "express"
   ],
   "author": "Tu Nombre",
@@ -29,16 +31,17 @@
     "express-validator": "^7.0.1",
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^7.5.0",
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
+    "mysql2": "^3.6.0",
     "nodemailer": "^7.0.5",
     "pdfkit": "^0.17.1",
+    "sequelize": "^6.32.1",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.1.10"
   },
   "engines": {
     "node": ">=18.0.0"
